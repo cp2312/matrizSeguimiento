@@ -1,0 +1,397 @@
+-- ============================================================================
+--  MATRIZ DE SEGUIMIENTO A PROFESORES
+--  Esquema completo — PostgreSQL
+--
+--  Orden de creacion:
+--    1. Tipos enumerados
+--    2. Funcion de trigger compartida
+--    3. Tablas (users -> programs -> subjects -> matrix_cells -> cell_history)
+--    4. Indices
+--    5. Triggers
+--    6. Vistas de consulta
+--
+--  Este archivo es idempotente en su mayoria: puede ejecutarse sobre una base
+--  vacia. Para reconstruir desde cero, usar reset.sql primero.
+-- ============================================================================
+
+
+-- ============================================================================
+--  1. TIPOS ENUMERADOS
+-- ============================================================================
+
+-- Estados de una celda del proceso.
+-- Corresponden uno a uno con la leyenda de colores del Excel original.
+--
+--   vacio             gris tenue                  el paso aun no se ha iniciado
+--   pendiente_equipo  casilla blanca, sub. rojo   pendiente de alguien del equipo
+--   pendiente_jefe    casilla amarilla, sub. rojo pendiente para la jefe
+--   ajustes           casilla amarilla, sub.negro recurso devuelto para ajustes
+--   terminado         fondo verde, letra negra    proceso cerrado
+--   por_revisar       fondo blanco, letra negra   pendiente de revision
+--
+CREATE TYPE cell_status AS ENUM (
+  'vacio',
+  'pendiente_equipo',
+  'pendiente_jefe',
+  'ajustes',
+  'terminado',
+  'por_revisar'
+);
+
+-- Roles de acceso a la aplicacion.
+-- OJO: esto es distinto de los estados de arriba. El rol define que puede
+-- hacer una persona dentro del sistema; el estado describe en que va el
+-- trabajo. Un usuario normal puede marcar una celda como 'pendiente_jefe'.
+CREATE TYPE user_role AS ENUM (
+  'usuario',
+  'administrador'
+);
+
+-- Modalidad de la asignatura. Solo se usa cuando el programa es hibrido
+-- (pregrados que tienen asignaturas presenciales y virtuales a la vez).
+CREATE TYPE subject_modality AS ENUM (
+  'presencial',
+  'virtual'
+);
+
+
+-- ============================================================================
+--  2. FUNCION DE TRIGGER COMPARTIDA
+-- ============================================================================
+
+-- Mantiene updated_at al dia sin que la aplicacion tenga que acordarse.
+CREATE OR REPLACE FUNCTION touch_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- ============================================================================
+--  3. TABLAS
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+--  users
+--  Quienes entran al sistema. Las iniciales de esta tabla son las que quedan
+--  registradas automaticamente en cada paso del proceso que la persona marca.
+-- ----------------------------------------------------------------------------
+CREATE TABLE users (
+  id            SERIAL PRIMARY KEY,
+  full_name     TEXT        NOT NULL,
+  email         TEXT        NOT NULL UNIQUE,
+  password_hash TEXT        NOT NULL,
+  initials      TEXT        NOT NULL UNIQUE,
+  role          user_role   NOT NULL DEFAULT 'usuario',
+  active        BOOLEAN     NOT NULL DEFAULT TRUE,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  CONSTRAINT chk_initials_formato CHECK (initials ~ '^[A-ZÑ]{2,4}$'),
+  CONSTRAINT chk_email_formato    CHECK (email LIKE '%_@_%._%')
+);
+
+COMMENT ON TABLE  users            IS 'Personas con acceso al sistema';
+COMMENT ON COLUMN users.initials   IS 'Iniciales que se estampan en cada paso del proceso';
+COMMENT ON COLUMN users.role       IS 'usuario: marca avances. administrador: ademas gestiona programas, asignaturas y usuarios';
+
+
+-- ----------------------------------------------------------------------------
+--  programs
+--  Un programa academico. Es el contenedor de todo.
+-- ----------------------------------------------------------------------------
+CREATE TABLE programs (
+  id         SERIAL PRIMARY KEY,
+  name       TEXT        NOT NULL,
+  notes      TEXT,
+  is_hybrid  BOOLEAN     NOT NULL DEFAULT FALSE,
+  archived   BOOLEAN     NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  CONSTRAINT chk_program_name_no_vacio CHECK (length(trim(name)) > 0)
+);
+
+COMMENT ON COLUMN programs.notes     IS 'Notas de especificaciones del programa';
+COMMENT ON COLUMN programs.is_hybrid IS 'TRUE si el pregrado tiene asignaturas presenciales y virtuales';
+COMMENT ON COLUMN programs.archived  IS 'Se oculta de la vista principal sin borrar el historico';
+
+
+-- ----------------------------------------------------------------------------
+--  subjects
+--  Una asignatura. Equivale a una fila de la matriz del Excel.
+--  Aqui van los datos propios de la asignatura, NO los pasos del proceso.
+-- ----------------------------------------------------------------------------
+CREATE TABLE subjects (
+  id         SERIAL  PRIMARY KEY,
+  program_id INTEGER NOT NULL REFERENCES programs(id) ON DELETE CASCADE,
+
+  -- Identificacion
+  semester         TEXT     NOT NULL,
+  name             TEXT     NOT NULL,
+  teachers_comment TEXT,
+  book_name        TEXT,
+  credits          SMALLINT NOT NULL DEFAULT 1,
+
+  -- Solo aplica cuando el programa es hibrido
+  modality             subject_modality,
+  hybrid_program_label TEXT,
+
+  -- Firma de derechos y registro DN/DA
+  rights_email_date DATE,
+
+  -- Entregables (vigencia del contrato)
+  deliverable_start_date DATE,
+  deliverable_end_date   DATE,
+
+  -- Tipo de contrato
+  contract_type    TEXT,
+  contract_comment TEXT,
+
+  -- Observaciones generales de la asignatura
+  general_comment TEXT,
+
+  archived   BOOLEAN     NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  CONSTRAINT chk_subject_name_no_vacio CHECK (length(trim(name)) > 0),
+
+  -- De los creditos depende cuantas OVAs, videos y guias se generan.
+  -- Maximo 5, que coincide con el tope de recursos por asignatura.
+  CONSTRAINT chk_creditos_rango CHECK (credits BETWEEN 1 AND 5),
+
+  -- El contrato no puede terminar antes de empezar
+  CONSTRAINT chk_fechas_contrato CHECK (
+    deliverable_start_date IS NULL
+    OR deliverable_end_date IS NULL
+    OR deliverable_end_date >= deliverable_start_date
+  ),
+
+  -- Una misma asignatura no se repite dentro del mismo semestre y modalidad
+  CONSTRAINT uq_asignatura_por_semestre
+    UNIQUE (program_id, semester, name, modality)
+);
+
+COMMENT ON COLUMN subjects.name                 IS 'Espacio academico';
+COMMENT ON COLUMN subjects.teachers_comment     IS 'Autores o docentes que dictan la asignatura';
+COMMENT ON COLUMN subjects.book_name            IS 'Se llena solo cuando el libro NO comparte nombre con la asignatura';
+COMMENT ON COLUMN subjects.credits              IS 'De 1 a 5. Define cuantas OVAs, videos de contenido y guias se generan: 1 por credito';
+COMMENT ON COLUMN subjects.hybrid_program_label IS 'Nombre del programa asociado; solo en pregrados hibridos';
+COMMENT ON COLUMN subjects.rights_email_date    IS 'Fecha de envio de correos de firma de derechos';
+
+
+-- ----------------------------------------------------------------------------
+--  matrix_cells
+--  El corazon del sistema. Una fila por cada paso del proceso de cada
+--  asignatura. En lugar de ~90 columnas fijas, cada paso es una fila
+--  identificada por step_path.
+--
+--  Formato de step_path:
+--    bloque.paso              -> 'libro.turnitin_repositorio'
+--    bloque.instancia.paso    -> 'ovas.2.creacion_guion'
+--
+--  La estructura del proceso (que pasos existen, cuales llevan comentario
+--  obligatorio, donde se bifurca) NO vive aqui: vive en shared/pipelineTemplate.ts.
+--  Esta tabla solo guarda los valores.
+-- ----------------------------------------------------------------------------
+CREATE TABLE matrix_cells (
+  id         SERIAL  PRIMARY KEY,
+  subject_id INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+  step_path  TEXT    NOT NULL,
+
+  -- Los tres datos que lleva todo paso desde firma de derechos en adelante
+  status    cell_status NOT NULL DEFAULT 'vacio',
+  done_date DATE,
+  initials  TEXT,
+
+  -- Texto libre: % de Turnitin, fecha del reporte, observaciones de prorroga.
+  -- Que comentarios son obligatorios lo valida el backend con la plantilla.
+  comment TEXT,
+
+  -- Solo para pasos de decision del tipo "hay ajustes?".
+  -- TRUE / FALSE / NULL (aun sin decidir). Con esto el frontend decide si
+  -- muestra u oculta los pasos de solicitud y validacion de ajustes.
+  branch_value BOOLEAN,
+
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+
+  -- No pueden existir dos filas para el mismo paso de la misma asignatura.
+  -- Ademas habilita el INSERT ... ON CONFLICT que usa el backend.
+  CONSTRAINT uq_celda_por_asignatura UNIQUE (subject_id, step_path),
+
+  CONSTRAINT chk_step_path_formato CHECK (step_path ~ '^[a-z_]+(\.[0-9]+)?\.[a-z_]+$'),
+
+  -- Un paso no se puede cerrar sin registrar quien y cuando
+  CONSTRAINT chk_terminado_completo CHECK (
+    status <> 'terminado'
+    OR (done_date IS NOT NULL AND initials IS NOT NULL)
+  )
+);
+
+COMMENT ON TABLE  matrix_cells              IS 'Una fila por paso del proceso por asignatura';
+COMMENT ON COLUMN matrix_cells.step_path    IS 'Ruta del paso, ej: libro.turnitin_repositorio u ovas.2.creacion_guion';
+COMMENT ON COLUMN matrix_cells.branch_value IS 'Solo en pasos de decision: hay ajustes? TRUE/FALSE/NULL';
+
+
+-- ----------------------------------------------------------------------------
+--  cell_history
+--  Auditoria. Cada cambio de estado deja rastro para poder responder
+--  "quien marco esto como terminado y cuando".
+--  Se llena sola por trigger; la aplicacion no escribe aqui.
+-- ----------------------------------------------------------------------------
+CREATE TABLE cell_history (
+  id         SERIAL  PRIMARY KEY,
+  subject_id INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+  step_path  TEXT    NOT NULL,
+
+  old_status cell_status,
+  new_status cell_status NOT NULL,
+  old_comment TEXT,
+  new_comment TEXT,
+
+  changed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  changed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE cell_history IS 'Bitacora automatica de cambios en las celdas del proceso';
+
+
+-- ============================================================================
+--  4. INDICES
+-- ============================================================================
+
+CREATE INDEX idx_users_email       ON users(email) WHERE active;
+CREATE INDEX idx_programs_activos  ON programs(archived, name);
+CREATE INDEX idx_subjects_program  ON subjects(program_id) WHERE NOT archived;
+CREATE INDEX idx_subjects_semestre ON subjects(program_id, semester);
+
+-- El indice mas usado: traer toda la matriz de una asignatura
+CREATE INDEX idx_cells_subject ON matrix_cells(subject_id);
+
+-- Para los tableros de pendientes
+CREATE INDEX idx_cells_status  ON matrix_cells(status) WHERE status <> 'vacio';
+
+-- Para consultar el historial mas reciente de una asignatura
+CREATE INDEX idx_history_subject ON cell_history(subject_id, changed_at DESC);
+
+
+-- ============================================================================
+--  5. TRIGGERS
+-- ============================================================================
+
+CREATE TRIGGER trg_users_touch    BEFORE UPDATE ON users
+  FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+CREATE TRIGGER trg_programs_touch BEFORE UPDATE ON programs
+  FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+CREATE TRIGGER trg_subjects_touch BEFORE UPDATE ON subjects
+  FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+CREATE TRIGGER trg_cells_touch    BEFORE UPDATE ON matrix_cells
+  FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+
+-- Registra en cell_history cualquier cambio de estado o de comentario.
+CREATE OR REPLACE FUNCTION log_cell_change()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF (TG_OP = 'INSERT') THEN
+    INSERT INTO cell_history (subject_id, step_path, old_status, new_status, new_comment, changed_by)
+    VALUES (NEW.subject_id, NEW.step_path, NULL, NEW.status, NEW.comment, NEW.updated_by);
+
+  ELSIF (NEW.status IS DISTINCT FROM OLD.status
+      OR NEW.comment IS DISTINCT FROM OLD.comment) THEN
+    INSERT INTO cell_history (subject_id, step_path, old_status, new_status, old_comment, new_comment, changed_by)
+    VALUES (NEW.subject_id, NEW.step_path, OLD.status, NEW.status, OLD.comment, NEW.comment, NEW.updated_by);
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_cells_historial
+  AFTER INSERT OR UPDATE ON matrix_cells
+  FOR EACH ROW EXECUTE FUNCTION log_cell_change();
+
+
+-- Impide que una asignatura de un programa NO hibrido tenga modalidad.
+-- Esta validacion cruza dos tablas, por eso va en trigger y no en CHECK.
+CREATE OR REPLACE FUNCTION validar_modalidad_hibrida()
+RETURNS TRIGGER AS $$
+DECLARE
+  programa_hibrido BOOLEAN;
+BEGIN
+  SELECT is_hybrid INTO programa_hibrido FROM programs WHERE id = NEW.program_id;
+
+  IF NOT programa_hibrido AND NEW.modality IS NOT NULL THEN
+    RAISE EXCEPTION 'La modalidad solo aplica en programas hibridos';
+  END IF;
+
+  IF programa_hibrido AND NEW.modality IS NULL THEN
+    RAISE EXCEPTION 'Los programas hibridos requieren indicar la modalidad';
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_subjects_modalidad
+  BEFORE INSERT OR UPDATE ON subjects
+  FOR EACH ROW EXECUTE FUNCTION validar_modalidad_hibrida();
+
+
+-- ============================================================================
+--  6. VISTAS DE CONSULTA
+-- ============================================================================
+
+-- Avance por asignatura.
+-- OJO: total_pasos_registrados cuenta solo las celdas que existen en la base,
+-- no el total real del proceso. El total real depende de los creditos y lo
+-- calcula el backend desde la plantilla. El porcentaje definitivo se arma alla.
+CREATE VIEW v_avance_asignaturas AS
+SELECT
+  s.id                AS subject_id,
+  s.program_id,
+  p.name              AS programa,
+  s.semester          AS semestre,
+  s.name              AS asignatura,
+  s.credits           AS creditos,
+  COUNT(c.id)                                              AS pasos_registrados,
+  COUNT(c.id) FILTER (WHERE c.status = 'terminado')        AS terminados,
+  COUNT(c.id) FILTER (WHERE c.status = 'ajustes')          AS en_ajustes,
+  COUNT(c.id) FILTER (WHERE c.status = 'pendiente_jefe')   AS pendientes_jefe,
+  COUNT(c.id) FILTER (WHERE c.status = 'pendiente_equipo') AS pendientes_equipo,
+  COUNT(c.id) FILTER (WHERE c.status = 'por_revisar')    AS por_revisar,
+  MAX(c.updated_at)                                        AS ultimo_movimiento
+FROM subjects s
+JOIN programs p        ON p.id = s.program_id
+LEFT JOIN matrix_cells c ON c.subject_id = s.id
+WHERE NOT s.archived
+GROUP BY s.id, s.program_id, p.name, s.semester, s.name, s.credits;
+
+
+-- Bandeja de pendientes: todo lo que no esta cerrado, con su responsable.
+CREATE VIEW v_pendientes AS
+SELECT
+  p.name     AS programa,
+  s.semester AS semestre,
+  s.name     AS asignatura,
+  c.step_path,
+  c.status,
+  c.done_date,
+  c.initials,
+  c.comment,
+  c.updated_at,
+  u.full_name AS actualizado_por
+FROM matrix_cells c
+JOIN subjects s      ON s.id = c.subject_id
+JOIN programs p      ON p.id = s.program_id
+LEFT JOIN users u    ON u.id = c.updated_by
+WHERE c.status IN ('pendiente_equipo', 'pendiente_jefe', 'ajustes', 'por_revisar')
+  AND NOT s.archived
+  AND NOT p.archived;

@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import { createServer } from 'node:http';
 import { Server } from 'socket.io';
+import { query } from './db/pool.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -17,14 +18,19 @@ export const io = new Server(httpServer, {
   cors: { origin: CLIENT_ORIGIN },
 });
 
-app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, service: 'matriz-api' });
+app.get('/api/health', async (_req, res) => {
+  try {
+    const rows = await query('SELECT COUNT(*) AS total FROM subjects');
+    res.json({ ok: true, asignaturas: Number(rows[0].total) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ ok: false, error: 'Sin conexion a la base de datos' });
+  }
 });
 
 io.on('connection', (socket) => {
   console.log('Cliente conectado:', socket.id);
 
-  // Cada asignatura es una "sala": así solo recibes los cambios de la matriz que estás viendo
   socket.on('subject:join', (subjectId: number) => {
     socket.join(`subject:${subjectId}`);
   });
