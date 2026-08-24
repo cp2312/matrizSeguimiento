@@ -1,1 +1,19 @@
 @import "tailwindcss";
+
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+
+  /* Paleta institucional derivada del degradado cian → azul */
+  --color-marca-50:  #ECFEFF;
+  --color-marca-100: #CFFAFE;
+  --color-marca-400: #22D3EE;
+  --color-marca-500: #06B6D4;
+  --color-marca-600: #0891B2;
+  --color-marca-700: #0E7490;
+  --color-marca-900: #164E63;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
