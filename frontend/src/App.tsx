@@ -1,8 +1,9 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { Layout } from './components/Layout';
-import Login from './pages/login';
+import Login from './pages/Login';
 import Usuarios from './pages/Usuarios';
+import ListadoProgramas from './pages/ListadoProgramas';
+import Programa from './pages/Programas';
 
 function Protegida({ children }: { children: React.ReactNode }) {
   const { usuario, cargando } = useAuth();
@@ -28,13 +29,12 @@ export default function App() {
 
           <Route
             path="/"
-            element={
-              <Protegida>
-                <Layout>
-                  <p className="text-sm text-slate-500">Aquí irá el listado de programas.</p>
-                </Layout>
-              </Protegida>
-            }
+            element={<Protegida><ListadoProgramas /></Protegida>}
+          />
+
+          <Route
+            path="/programas/:id"
+            element={<Protegida><Programa /></Protegida>}
           />
 
           <Route

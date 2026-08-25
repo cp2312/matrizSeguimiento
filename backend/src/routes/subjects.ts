@@ -1,9 +1,54 @@
 import { Router } from 'express';
-import { query, queryOne } from '../db/pool.js';
+import type { PoolClient } from 'pg';
+import { query, queryOne, withTransaction } from '../db/pool.js';
 import { totalSteps } from '../../../shared/pipelineTemplate.js';
-import type { Subject } from '../../../shared/types.js';
+import type { Subject, SubjectTeacher } from '../../../shared/types.js';
 
 export const subjectsRouter = Router();
+
+interface DocenteEntrada {
+  fullName?: string;
+  startDate?: string | null;
+  endDate?: string | null;
+  contractType?: string | null;
+}
+
+/** Valida la lista de docentes que llega del cliente. Devuelve el error o null. */
+function validarDocentes(teachers: unknown): string | null {
+  if (!Array.isArray(teachers) || teachers.length === 0) {
+    return 'La asignatura debe tener al menos un docente';
+  }
+  for (const t of teachers as DocenteEntrada[]) {
+    if (!t.fullName?.trim()) {
+      return 'Todos los docentes deben tener un nombre';
+    }
+  }
+  return null;
+}
+
+/** Reemplaza por completo los docentes de una asignatura dentro de una transaccion. */
+async function guardarDocentes(
+  client: PoolClient, subjectId: number, teachers: DocenteEntrada[]
+): Promise<SubjectTeacher[]> {
+  await client.query('DELETE FROM subject_teachers WHERE subject_id = $1', [subjectId]);
+
+  const guardados: SubjectTeacher[] = [];
+  for (const t of teachers) {
+    const { rows } = await client.query<SubjectTeacher>(
+      `INSERT INTO subject_teachers (subject_id, full_name, start_date, end_date, contract_type)
+       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      [subjectId, t.fullName!.trim(), t.startDate ?? null, t.endDate ?? null, t.contractType ?? null]
+    );
+    guardados.push(rows[0]);
+  }
+  return guardados;
+}
+
+async function docentesDe(subjectId: number): Promise<SubjectTeacher[]> {
+  return query<SubjectTeacher>(
+    'SELECT * FROM subject_teachers WHERE subject_id = $1 ORDER BY id', [subjectId]
+  );
+}
 
 // Asignaturas de un programa
 subjectsRouter.get('/programs/:programId/subjects', async (req, res) => {
@@ -14,16 +59,28 @@ subjectsRouter.get('/programs/:programId/subjects', async (req, res) => {
     [req.params.programId]
   );
 
-  res.json(asignaturas);
+  const docentes = await query<SubjectTeacher>(
+    `SELECT t.* FROM subject_teachers t
+     JOIN subjects s ON s.id = t.subject_id
+     WHERE s.program_id = $1 AND NOT s.archived
+     ORDER BY t.id`,
+    [req.params.programId]
+  );
+  const porAsignatura = new Map<number, SubjectTeacher[]>();
+  for (const d of docentes) {
+    if (!porAsignatura.has(d.subject_id)) porAsignatura.set(d.subject_id, []);
+    porAsignatura.get(d.subject_id)!.push(d);
+  }
+
+  res.json(asignaturas.map((a) => ({ ...a, teachers: porAsignatura.get(a.id) ?? [] })));
 });
 
 // Crear asignatura
 subjectsRouter.post('/programs/:programId/subjects', async (req, res) => {
   const {
-    semester, name, teachersComment, bookName, credits,
+    semester, name, bookName, credits,
     modality, hybridProgramLabel, rightsEmailDate,
-    deliverableStartDate, deliverableEndDate,
-    contractType, contractComment, generalComment,
+    generalComment, teachers,
   } = req.body;
 
   if (!semester?.trim() || !name?.trim()) {
@@ -35,25 +92,30 @@ subjectsRouter.post('/programs/:programId/subjects', async (req, res) => {
     return res.status(400).json({ error: 'Los créditos deben estar entre 1 y 5' });
   }
 
-  try {
-    const asignatura = await queryOne<Subject>(
-      `INSERT INTO subjects
-        (program_id, semester, name, teachers_comment, book_name, credits,
-         modality, hybrid_program_label, rights_email_date,
-         deliverable_start_date, deliverable_end_date,
-         contract_type, contract_comment, general_comment)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-       RETURNING *`,
-      [
-        req.params.programId, semester.trim(), name.trim(),
-        teachersComment ?? null, bookName ?? null, creditos,
-        modality ?? null, hybridProgramLabel ?? null, rightsEmailDate ?? null,
-        deliverableStartDate ?? null, deliverableEndDate ?? null,
-        contractType ?? null, contractComment ?? null, generalComment ?? null,
-      ]
-    );
+  const errorDocentes = validarDocentes(teachers);
+  if (errorDocentes) return res.status(400).json({ error: errorDocentes });
 
-    res.status(201).json(asignatura);
+  try {
+    const resultado = await withTransaction(async (client) => {
+      const { rows } = await client.query<Subject>(
+        `INSERT INTO subjects
+          (program_id, semester, name, book_name, credits,
+           modality, hybrid_program_label, rights_email_date, general_comment)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+         RETURNING *`,
+        [
+          req.params.programId, semester.trim(), name.trim(),
+          bookName ?? null, creditos,
+          modality ?? null, hybridProgramLabel ?? null, rightsEmailDate ?? null,
+          generalComment ?? null,
+        ]
+      );
+      const asignatura = rows[0];
+      const docentes = await guardarDocentes(client, asignatura.id, teachers);
+      return { ...asignatura, teachers: docentes };
+    });
+
+    res.status(201).json(resultado);
   } catch (err: any) {
     // Los triggers y CHECK de la base devuelven mensajes útiles
     if (err.code === '23505') {
@@ -71,7 +133,8 @@ subjectsRouter.get('/subjects/:id', async (req, res) => {
   const asignatura = await queryOne<Subject>('SELECT * FROM subjects WHERE id = $1', [req.params.id]);
   if (!asignatura) return res.status(404).json({ error: 'Asignatura no encontrada' });
 
-  res.json({ ...asignatura, total_pasos: totalSteps(asignatura.credits) });
+  const teachers = await docentesDe(asignatura.id);
+  res.json({ ...asignatura, teachers, total_pasos: totalSteps(asignatura.credits) });
 });
 
 // Editar
@@ -82,34 +145,42 @@ subjectsRouter.patch('/subjects/:id', async (req, res) => {
   const b = req.body;
   const valor = (camel: string, col: string) => (b[camel] !== undefined ? b[camel] : existente[col]);
 
-  try {
-    const asignatura = await queryOne<Subject>(
-      `UPDATE subjects SET
-         semester=$1, name=$2, teachers_comment=$3, book_name=$4, credits=$5,
-         modality=$6, hybrid_program_label=$7, rights_email_date=$8,
-         deliverable_start_date=$9, deliverable_end_date=$10,
-         contract_type=$11, contract_comment=$12, general_comment=$13, archived=$14
-       WHERE id=$15 RETURNING *`,
-      [
-        valor('semester', 'semester'),
-        valor('name', 'name'),
-        valor('teachersComment', 'teachers_comment'),
-        valor('bookName', 'book_name'),
-        valor('credits', 'credits'),
-        valor('modality', 'modality'),
-        valor('hybridProgramLabel', 'hybrid_program_label'),
-        valor('rightsEmailDate', 'rights_email_date'),
-        valor('deliverableStartDate', 'deliverable_start_date'),
-        valor('deliverableEndDate', 'deliverable_end_date'),
-        valor('contractType', 'contract_type'),
-        valor('contractComment', 'contract_comment'),
-        valor('generalComment', 'general_comment'),
-        valor('archived', 'archived'),
-        req.params.id,
-      ]
-    );
+  if (b.teachers !== undefined) {
+    const errorDocentes = validarDocentes(b.teachers);
+    if (errorDocentes) return res.status(400).json({ error: errorDocentes });
+  }
 
-    res.json(asignatura);
+  try {
+    const resultado = await withTransaction(async (client) => {
+      const { rows } = await client.query<Subject>(
+        `UPDATE subjects SET
+           semester=$1, name=$2, book_name=$3, credits=$4,
+           modality=$5, hybrid_program_label=$6, rights_email_date=$7,
+           general_comment=$8, archived=$9
+         WHERE id=$10 RETURNING *`,
+        [
+          valor('semester', 'semester'),
+          valor('name', 'name'),
+          valor('bookName', 'book_name'),
+          valor('credits', 'credits'),
+          valor('modality', 'modality'),
+          valor('hybridProgramLabel', 'hybrid_program_label'),
+          valor('rightsEmailDate', 'rights_email_date'),
+          valor('generalComment', 'general_comment'),
+          valor('archived', 'archived'),
+          req.params.id,
+        ]
+      );
+      const asignatura = rows[0];
+
+      const teachers = b.teachers !== undefined
+        ? await guardarDocentes(client, asignatura.id, b.teachers)
+        : await docentesDe(asignatura.id);
+
+      return { ...asignatura, teachers };
+    });
+
+    res.json(resultado);
   } catch (err: any) {
     if (err.code === 'P0001' || err.code === '23514') {
       return res.status(400).json({ error: err.message });

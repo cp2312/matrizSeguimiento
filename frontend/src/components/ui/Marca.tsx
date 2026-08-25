@@ -12,7 +12,7 @@ export function Marca({ tamano = 'md' }: Props) {
 
   return (
     <div className="flex items-center gap-3">
-      <img src="/logo-campus.png" alt="" className={`${t.logo} w-auto shrink-0`} />
+      <img src="/logo-usta1.png" alt="" className={`${t.logo} shrink-0`} />
       <div className="leading-tight">
         <p className={`${t.titulo} font-semibold text-slate-800 tracking-tight`}>
           MATRIZ DE SEGUIMIENTO

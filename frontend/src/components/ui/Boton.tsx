@@ -12,8 +12,8 @@ const VARIANTES = {
 };
 
 const FORMAS = {
-  redondeada: 'rounded-lg',
-  pildora:    'rounded-full',
+  redondeada: 'rounded-lg border-none',
+  pildora:    'rounded-full border-none',
 };
 
 export function Boton({

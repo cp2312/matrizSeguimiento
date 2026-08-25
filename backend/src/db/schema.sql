@@ -131,7 +131,6 @@ CREATE TABLE subjects (
   -- Identificacion
   semester         TEXT     NOT NULL,
   name             TEXT     NOT NULL,
-  teachers_comment TEXT,
   book_name        TEXT,
   credits          SMALLINT NOT NULL DEFAULT 1,
 
@@ -141,14 +140,6 @@ CREATE TABLE subjects (
 
   -- Firma de derechos y registro DN/DA
   rights_email_date DATE,
-
-  -- Entregables (vigencia del contrato)
-  deliverable_start_date DATE,
-  deliverable_end_date   DATE,
-
-  -- Tipo de contrato
-  contract_type    TEXT,
-  contract_comment TEXT,
 
   -- Observaciones generales de la asignatura
   general_comment TEXT,
@@ -163,24 +154,52 @@ CREATE TABLE subjects (
   -- Maximo 5, que coincide con el tope de recursos por asignatura.
   CONSTRAINT chk_creditos_rango CHECK (credits BETWEEN 1 AND 5),
 
-  -- El contrato no puede terminar antes de empezar
-  CONSTRAINT chk_fechas_contrato CHECK (
-    deliverable_start_date IS NULL
-    OR deliverable_end_date IS NULL
-    OR deliverable_end_date >= deliverable_start_date
-  ),
-
   -- Una misma asignatura no se repite dentro del mismo semestre y modalidad
   CONSTRAINT uq_asignatura_por_semestre
     UNIQUE (program_id, semester, name, modality)
 );
 
 COMMENT ON COLUMN subjects.name                 IS 'Espacio academico';
-COMMENT ON COLUMN subjects.teachers_comment     IS 'Autores o docentes que dictan la asignatura';
 COMMENT ON COLUMN subjects.book_name            IS 'Se llena solo cuando el libro NO comparte nombre con la asignatura';
 COMMENT ON COLUMN subjects.credits              IS 'De 1 a 5. Define cuantas OVAs, videos de contenido y guias se generan: 1 por credito';
 COMMENT ON COLUMN subjects.hybrid_program_label IS 'Nombre del programa asociado; solo en pregrados hibridos';
 COMMENT ON COLUMN subjects.rights_email_date    IS 'Fecha de envio de correos de firma de derechos';
+
+
+-- ----------------------------------------------------------------------------
+--  subject_teachers
+--  Los docentes o autores de una asignatura. Cuando son varios, cada uno
+--  tiene su propia vigencia de contrato (inicio/fin) y su propio tipo de
+--  contrato -- eso no se comparte a nivel de asignatura.
+-- ----------------------------------------------------------------------------
+CREATE TABLE subject_teachers (
+  id         SERIAL  PRIMARY KEY,
+  subject_id INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+
+  full_name TEXT NOT NULL,
+
+  -- Vigencia del contrato de este docente
+  start_date DATE,
+  end_date   DATE,
+
+  contract_type TEXT,
+
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  CONSTRAINT chk_teacher_name_no_vacio CHECK (length(trim(full_name)) > 0),
+
+  -- El contrato no puede terminar antes de empezar
+  CONSTRAINT chk_teacher_fechas_contrato CHECK (
+    start_date IS NULL OR end_date IS NULL OR end_date >= start_date
+  )
+);
+
+COMMENT ON TABLE  subject_teachers                IS 'Docentes o autores de una asignatura, con su propia vigencia y tipo de contrato';
+COMMENT ON COLUMN subject_teachers.full_name      IS 'Nombre del docente o autor';
+COMMENT ON COLUMN subject_teachers.start_date     IS 'Inicio de contrato de este docente';
+COMMENT ON COLUMN subject_teachers.end_date       IS 'Fin de contrato de este docente';
+COMMENT ON COLUMN subject_teachers.contract_type  IS 'Tipo de contrato de este docente, ej: Prestacion de servicios';
 
 
 -- ----------------------------------------------------------------------------
@@ -268,6 +287,7 @@ CREATE INDEX idx_users_email       ON users(email) WHERE active;
 CREATE INDEX idx_programs_activos  ON programs(archived, name);
 CREATE INDEX idx_subjects_program  ON subjects(program_id) WHERE NOT archived;
 CREATE INDEX idx_subjects_semestre ON subjects(program_id, semester);
+CREATE INDEX idx_subject_teachers_subject ON subject_teachers(subject_id);
 
 -- El indice mas usado: traer toda la matriz de una asignatura
 CREATE INDEX idx_cells_subject ON matrix_cells(subject_id);
@@ -290,6 +310,9 @@ CREATE TRIGGER trg_programs_touch BEFORE UPDATE ON programs
   FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 
 CREATE TRIGGER trg_subjects_touch BEFORE UPDATE ON subjects
+  FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+CREATE TRIGGER trg_subject_teachers_touch BEFORE UPDATE ON subject_teachers
   FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 
 CREATE TRIGGER trg_cells_touch    BEFORE UPDATE ON matrix_cells

@@ -67,18 +67,25 @@ export interface Subject {
   program_id: number;
   semester: string;
   name: string;
-  teachers_comment: string | null;
   book_name: string | null;
   credits: number;
   modality: SubjectModality | null;
   hybrid_program_label: string | null;
   rights_email_date: string | null;
-  deliverable_start_date: string | null;
-  deliverable_end_date: string | null;
-  contract_type: string | null;
-  contract_comment: string | null;
   general_comment: string | null;
   archived: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Un docente o autor de una asignatura, con su propia vigencia y tipo de contrato */
+export interface SubjectTeacher {
+  id: number;
+  subject_id: number;
+  full_name: string;
+  start_date: string | null;
+  end_date: string | null;
+  contract_type: string | null;
   created_at: string;
   updated_at: string;
 }

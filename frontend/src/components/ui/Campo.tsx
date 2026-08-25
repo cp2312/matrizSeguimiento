@@ -7,7 +7,7 @@ const ESTILOS = {
   normal:
     'h-10 px-3 rounded-lg border border-stone-300 bg-white focus:ring-stone-400',
   pildora:
-    'h-11 px-4 rounded-full border border-slate-200 bg-slate-50 focus:ring-sky-500 focus:bg-white',
+    'h-11 px-4 rounded-full border border-slate-300 bg-slate-50 focus:ring-slate-400 focus:bg-white',
 };
 
 export function Campo({ etiqueta, variante = 'normal', className = '', ...props }: Props) {

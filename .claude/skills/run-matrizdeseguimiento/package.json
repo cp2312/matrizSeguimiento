@@ -1,0 +1,10 @@
+{
+  "name": "run-matrizdeseguimiento-driver",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Playwright driver used by the run-matrizdeseguimiento skill to drive the app headlessly.",
+  "type": "module",
+  "dependencies": {
+    "playwright-core": "^1.57.1"
+  }
+}

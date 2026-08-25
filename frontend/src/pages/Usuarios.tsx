@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { Layout } from '../components/Layout';
 import { Boton } from '../components/ui/Boton';
 import { Campo } from '../components/ui/Campo';
-import { Select } from '../components/ui/select';
+import { Select } from '../components/ui/Select';
 import { Modal } from '../components/ui/Modal';
 import { Alerta } from '../components/ui/Alerta';
 import { Cargando } from '../components/ui/Estado';

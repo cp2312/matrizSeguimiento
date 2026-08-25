@@ -4,7 +4,7 @@ import { query, queryOne } from '../db/pool.js';
 import {
   buildStepPaths, isValidStepPath, findStepDef, totalSteps,
 } from '../../../shared/pipelineTemplate.js';
-import type { MatrixCell, Subject } from '../../../shared/types.js';
+import type { MatrixCell, Subject, SubjectTeacher } from '../../../shared/types.js';
 
 export function buildMatrixRouter(io: SocketIOServer) {
   const router = Router();
@@ -23,6 +23,9 @@ export function buildMatrixRouter(io: SocketIOServer) {
     const filas = await query<MatrixCell>(
       'SELECT * FROM matrix_cells WHERE subject_id = $1', [req.params.id]
     );
+    const teachers = await query<SubjectTeacher>(
+      'SELECT * FROM subject_teachers WHERE subject_id = $1 ORDER BY id', [req.params.id]
+    );
 
     const celdas: Record<string, MatrixCell> = {};
     for (const fila of filas) celdas[fila.step_path] = fila;
@@ -30,7 +33,7 @@ export function buildMatrixRouter(io: SocketIOServer) {
     const terminados = filas.filter(f => f.status === 'terminado').length;
 
     res.json({
-      asignatura,
+      asignatura: { ...asignatura, teachers },
       pasos,
       celdas,
       avance: {
@@ -126,6 +129,71 @@ router.patch('/subjects/:subjectId/matrix/*stepPath', async (req, res) => {
 
     res.json(historial);
   });
+// Tablero del programa: cada asignatura con el estado resumido de cada bloque
+router.get('/programs/:id/tablero', async (req, res) => {
+  const asignaturas = await query<Subject>(
+    `SELECT * FROM subjects
+     WHERE program_id = $1 AND NOT archived
+     ORDER BY semester, name`,
+    [req.params.id]
+  );
 
+  if (!asignaturas.length) return res.json([]);
+
+  const celdas = await query<MatrixCell>(
+    `SELECT c.subject_id, c.step_path, c.status
+     FROM matrix_cells c
+     JOIN subjects s ON s.id = c.subject_id
+     WHERE s.program_id = $1`,
+    [req.params.id]
+  );
+
+  // Agrupa los estados por asignatura y bloque
+  const porAsignatura = new Map<number, Map<string, string[]>>();
+
+  for (const celda of celdas) {
+    const bloque = celda.step_path.split('.')[0];
+    if (!porAsignatura.has(celda.subject_id)) porAsignatura.set(celda.subject_id, new Map());
+    const bloques = porAsignatura.get(celda.subject_id)!;
+    if (!bloques.has(bloque)) bloques.set(bloque, []);
+    bloques.get(bloque)!.push(celda.status);
+  }
+
+  const resultado = asignaturas.map((a) => {
+    const pasos = buildStepPaths(a.credits);
+    const bloques = porAsignatura.get(a.id) ?? new Map<string, string[]>();
+
+    // Cuenta cuántos pasos totales tiene cada bloque, para saber si está completo
+    const totalPorBloque = new Map<string, number>();
+    for (const p of pasos) {
+      totalPorBloque.set(p.blockKey, (totalPorBloque.get(p.blockKey) ?? 0) + 1);
+    }
+
+    const estados: Record<string, string[]> = {};
+    for (const [bloque, total] of totalPorBloque) {
+      const guardados = bloques.get(bloque) ?? [];
+      // Los pasos sin fila cuentan como vacíos
+      estados[bloque] = [
+        ...guardados,
+        ...Array(Math.max(0, total - guardados.length)).fill('vacio'),
+      ];
+    }
+
+    const terminados = [...bloques.values()]
+      .flat()
+      .filter((s) => s === 'terminado').length;
+
+    return {
+      ...a,
+      estadosPorBloque: estados,
+      avance: Math.round((terminados / pasos.length) * 100),
+    };
+  });
+
+  res.json(resultado);
+});
+  
   return router;
+
+  
 }

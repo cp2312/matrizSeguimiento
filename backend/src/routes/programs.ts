@@ -22,15 +22,7 @@ programsRouter.get('/', async (req, res) => {
 programsRouter.get('/:id', async (req, res) => {
   const programa = await queryOne<Program>('SELECT * FROM programs WHERE id = $1', [req.params.id]);
   if (!programa) return res.status(404).json({ error: 'Programa no encontrado' });
-
-  const asignaturas = await query(
-    `SELECT * FROM v_avance_asignaturas
-     WHERE program_id = $1
-     ORDER BY semestre, asignatura`,
-    [req.params.id]
-  );
-
-  res.json({ programa, asignaturas });
+  res.json(programa);
 });
 
 // Crear
