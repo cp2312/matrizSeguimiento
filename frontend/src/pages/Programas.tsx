@@ -1,6 +1,7 @@
 import { Fragment, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useFetch } from '../hooks/useFetch';
+import { useMatriz } from '../hooks/useMatriz';
 import { Layout } from '../components/Layout';
 import { Boton } from '../components/ui/Boton';
 import { Alerta } from '../components/ui/Alerta';
@@ -8,8 +9,9 @@ import { TituloPagina } from '../components/ui/TituloPagina';
 import { Cargando, Vacio } from '../components/ui/Estado';
 import { Leyenda } from '../components/Leyenda';
 import { ModalNuevaAsignatura } from '../components/ModalNuevaAsignatura';
+import { ModalApartado } from '../components/ModalApartado';
 import { ESTADOS, estadoDelBloque } from '../lib/estados';
-import { COLUMNAS_TABLERO } from '../lib/bloques';
+import { COLUMNAS_TABLERO, agruparPasos } from '../lib/bloques';
 import type { CellStatus, Program, Subject } from '@shared/types';
 
 interface FilaTablero extends Subject {
@@ -24,6 +26,17 @@ export default function Programa() {
 
   const { datos: programa } = useFetch<Program>(`/programs/${id}`);
   const { datos: filas, cargando, error, recargar } = useFetch<FilaTablero[]>(`/programs/${id}/tablero`);
+
+  // Casilla del tablero en la que se hizo clic: carga la matriz de esa asignatura bajo demanda
+  const [celdaAbierta, setCeldaAbierta] = useState<{ subjectId: number; blockKey: string; blockLabel: string } | null>(null);
+  const { datos: datosModal, aplicarCelda: aplicarCeldaModal } = useMatriz(
+    celdaAbierta ? String(celdaAbierta.subjectId) : undefined
+  );
+  // evita mostrar un instante los datos de la asignatura anterior mientras carga la nueva
+  const datosVigentes = celdaAbierta && datosModal?.asignatura.id === celdaAbierta.subjectId ? datosModal : null;
+  const gruposModal = datosVigentes
+    ? agruparPasos(datosVigentes.pasos, { videoPorDocente: datosVigentes.asignatura.videos_por_docente })
+    : {};
 
   // Agrupa por semestre para las filas separadoras
   const porSemestre = (filas ?? []).reduce<Record<string, FilaTablero[]>>((acc, f) => {
@@ -113,9 +126,14 @@ export default function Programa() {
                           const e = ESTADOS[estado];
                           return (
                             <td key={c.key} className="px-1 py-1.5">
-                              <div
+                              <button
+                                type="button"
                                 title={`${c.label}: ${e.label}`}
-                                className="h-5 rounded"
+                                onClick={(ev) => {
+                                  ev.stopPropagation();
+                                  setCeldaAbierta({ subjectId: a.id, blockKey: c.key, blockLabel: c.label });
+                                }}
+                                className="h-5 w-full rounded transition-transform hover:scale-y-125 cursor-pointer"
                                 style={{
                                   background: e.fondo,
                                   border: e.borde ? '0.5px solid rgba(0,0,0,.12)' : 'none',
@@ -144,6 +162,23 @@ export default function Programa() {
           programa={programa}
           onCerrar={() => setModalAbierto(false)}
           onCreada={() => { setModalAbierto(false); recargar(); }}
+        />
+      )}
+
+      {celdaAbierta && (
+        <ModalApartado
+          key={`${celdaAbierta.subjectId}-${celdaAbierta.blockKey}`}
+          abierto
+          subjectId={celdaAbierta.subjectId}
+          grupos={gruposModal}
+          celdas={datosVigentes?.celdas ?? {}}
+          teachers={datosVigentes?.asignatura.teachers ?? []}
+          apartadoInicial={null}
+          bloqueInicial={celdaAbierta.blockKey}
+          bloqueLabel={celdaAbierta.blockLabel}
+          cargando={!datosVigentes}
+          onGuardado={(celda) => { aplicarCeldaModal(celda); recargar(); }}
+          onCerrar={() => setCeldaAbierta(null)}
         />
       )}
     </Layout>

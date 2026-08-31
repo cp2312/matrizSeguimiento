@@ -50,6 +50,28 @@ async function docentesDe(subjectId: number): Promise<SubjectTeacher[]> {
   );
 }
 
+/**
+ * El tipo de contrato ya se captura por docente al crear/editar la asignatura,
+ * asi que ese paso del proceso ("contrato.tipo_contrato") se marca solo como
+ * terminado en cuanto algun docente tiene tipo de contrato cargado -- no hace
+ * falta volver a marcarlo a mano. Si el paso ya tiene un estado (por ejemplo
+ * alguien lo cambio a mano despues), no lo pisa.
+ */
+async function marcarTipoContrato(
+  client: PoolClient, subjectId: number, docentes: SubjectTeacher[],
+  usuario: { id: number; initials: string } | undefined
+): Promise<void> {
+  const hayTipoContrato = docentes.some((d) => d.contract_type?.trim());
+  if (!hayTipoContrato || !usuario) return;
+
+  await client.query(
+    `INSERT INTO matrix_cells (subject_id, step_path, status, done_date, initials, updated_by)
+     VALUES ($1, 'contrato.tipo_contrato', 'terminado', CURRENT_DATE, $2, $3)
+     ON CONFLICT (subject_id, step_path) DO NOTHING`,
+    [subjectId, usuario.initials, usuario.id]
+  );
+}
+
 // Asignaturas de un programa
 subjectsRouter.get('/programs/:programId/subjects', async (req, res) => {
   const asignaturas = await query<Subject>(
@@ -80,7 +102,7 @@ subjectsRouter.post('/programs/:programId/subjects', async (req, res) => {
   const {
     semester, name, bookName, credits,
     modality, hybridProgramLabel, rightsEmailDate,
-    generalComment, teachers,
+    generalComment, videosPorDocente, teachers,
   } = req.body;
 
   if (!semester?.trim() || !name?.trim()) {
@@ -100,18 +122,19 @@ subjectsRouter.post('/programs/:programId/subjects', async (req, res) => {
       const { rows } = await client.query<Subject>(
         `INSERT INTO subjects
           (program_id, semester, name, book_name, credits,
-           modality, hybrid_program_label, rights_email_date, general_comment)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+           modality, hybrid_program_label, rights_email_date, general_comment, videos_por_docente)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
          RETURNING *`,
         [
           req.params.programId, semester.trim(), name.trim(),
           bookName ?? null, creditos,
           modality ?? null, hybridProgramLabel ?? null, rightsEmailDate ?? null,
-          generalComment ?? null,
+          generalComment ?? null, Boolean(videosPorDocente),
         ]
       );
       const asignatura = rows[0];
       const docentes = await guardarDocentes(client, asignatura.id, teachers);
+      await marcarTipoContrato(client, asignatura.id, docentes, req.user);
       return { ...asignatura, teachers: docentes };
     });
 
@@ -156,8 +179,8 @@ subjectsRouter.patch('/subjects/:id', async (req, res) => {
         `UPDATE subjects SET
            semester=$1, name=$2, book_name=$3, credits=$4,
            modality=$5, hybrid_program_label=$6, rights_email_date=$7,
-           general_comment=$8, archived=$9
-         WHERE id=$10 RETURNING *`,
+           general_comment=$8, archived=$9, videos_por_docente=$10
+         WHERE id=$11 RETURNING *`,
         [
           valor('semester', 'semester'),
           valor('name', 'name'),
@@ -168,6 +191,7 @@ subjectsRouter.patch('/subjects/:id', async (req, res) => {
           valor('rightsEmailDate', 'rights_email_date'),
           valor('generalComment', 'general_comment'),
           valor('archived', 'archived'),
+          valor('videosPorDocente', 'videos_por_docente'),
           req.params.id,
         ]
       );
@@ -177,6 +201,7 @@ subjectsRouter.patch('/subjects/:id', async (req, res) => {
         ? await guardarDocentes(client, asignatura.id, b.teachers)
         : await docentesDe(asignatura.id);
 
+      await marcarTipoContrato(client, asignatura.id, teachers, req.user);
       return { ...asignatura, teachers };
     });
 

@@ -54,6 +54,17 @@ CREATE TYPE subject_modality AS ENUM (
   'virtual'
 );
 
+-- Tipo de un programa academico.
+--   hibrido:    tiene asignaturas presenciales y virtuales a la vez;
+--               cada asignatura elige su propia modalidad (ver subject_modality).
+--   presencial: todo el programa es presencial, sin eleccion por asignatura.
+--   virtual:    todo el programa es virtual, sin eleccion por asignatura.
+CREATE TYPE program_type AS ENUM (
+  'hibrido',
+  'presencial',
+  'virtual'
+);
+
 
 -- ============================================================================
 --  2. FUNCION DE TRIGGER COMPARTIDA
@@ -106,7 +117,7 @@ CREATE TABLE programs (
   id         SERIAL PRIMARY KEY,
   name       TEXT        NOT NULL,
   notes      TEXT,
-  is_hybrid  BOOLEAN     NOT NULL DEFAULT FALSE,
+  type       program_type NOT NULL DEFAULT 'presencial',
   archived   BOOLEAN     NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -115,7 +126,7 @@ CREATE TABLE programs (
 );
 
 COMMENT ON COLUMN programs.notes     IS 'Notas de especificaciones del programa';
-COMMENT ON COLUMN programs.is_hybrid IS 'TRUE si el pregrado tiene asignaturas presenciales y virtuales';
+COMMENT ON COLUMN programs.type      IS 'hibrido, presencial o virtual -- solo hibrido pide modalidad por asignatura';
 COMMENT ON COLUMN programs.archived  IS 'Se oculta de la vista principal sin borrar el historico';
 
 
@@ -143,6 +154,10 @@ CREATE TABLE subjects (
 
   -- Observaciones generales de la asignatura
   general_comment TEXT,
+
+  -- Cuando los hace un profesor en vez del equipo de producción, los bloques
+  -- de video se muestran como "Video tutorial" en toda la interfaz.
+  videos_por_docente BOOLEAN NOT NULL DEFAULT FALSE,
 
   archived   BOOLEAN     NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -279,6 +294,31 @@ CREATE TABLE cell_history (
 COMMENT ON TABLE cell_history IS 'Bitacora automatica de cambios en las celdas del proceso';
 
 
+-- ----------------------------------------------------------------------------
+--  category_owners
+--  A quien se le avisa por correo cuando un paso de esa categoria del
+--  proceso queda pendiente. Una fila fija por categoria monitoreada; el
+--  administrador elige el usuario desde la pantalla de Usuarios.
+-- ----------------------------------------------------------------------------
+CREATE TABLE category_owners (
+  category   TEXT PRIMARY KEY,
+  user_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE  category_owners          IS 'Encargado por categoria del proceso que recibe el correo de aviso cuando algo queda pendiente';
+COMMENT ON COLUMN category_owners.category IS 'Clave del bloque del proceso: contrato, podcast, cuestionario_final o guias';
+
+CREATE TRIGGER trg_category_owners_touch BEFORE UPDATE ON category_owners
+  FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+-- Categorias monitoreadas por el aviso de correo. Si se agrega una nueva,
+-- basta con insertarla aqui -- el backend valida contra esta tabla.
+INSERT INTO category_owners (category) VALUES
+  ('contrato'), ('podcast'), ('cuestionario_final'), ('guias')
+ON CONFLICT (category) DO NOTHING;
+
+
 -- ============================================================================
 --  4. INDICES
 -- ============================================================================
@@ -347,15 +387,15 @@ CREATE TRIGGER trg_cells_historial
 CREATE OR REPLACE FUNCTION validar_modalidad_hibrida()
 RETURNS TRIGGER AS $$
 DECLARE
-  programa_hibrido BOOLEAN;
+  tipo_programa program_type;
 BEGIN
-  SELECT is_hybrid INTO programa_hibrido FROM programs WHERE id = NEW.program_id;
+  SELECT type INTO tipo_programa FROM programs WHERE id = NEW.program_id;
 
-  IF NOT programa_hibrido AND NEW.modality IS NOT NULL THEN
+  IF tipo_programa <> 'hibrido' AND NEW.modality IS NOT NULL THEN
     RAISE EXCEPTION 'La modalidad solo aplica en programas hibridos';
   END IF;
 
-  IF programa_hibrido AND NEW.modality IS NULL THEN
+  IF tipo_programa = 'hibrido' AND NEW.modality IS NULL THEN
     RAISE EXCEPTION 'Los programas hibridos requieren indicar la modalidad';
   END IF;
 

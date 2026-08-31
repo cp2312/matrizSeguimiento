@@ -12,6 +12,9 @@ export type UserRole = 'usuario' | 'administrador';
 
 export type SubjectModality = 'presencial' | 'virtual';
 
+/** Tipo de un programa. Solo "hibrido" pide modalidad por asignatura */
+export type ProgramType = 'hibrido' | 'presencial' | 'virtual';
+
 /** Definición de un paso individual dentro de un bloque */
 export interface StepDef {
   key: string;
@@ -56,7 +59,7 @@ export interface Program {
   id: number;
   name: string;
   notes: string | null;
-  is_hybrid: boolean;
+  type: ProgramType;
   archived: boolean;
   created_at: string;
   updated_at: string;
@@ -73,6 +76,8 @@ export interface Subject {
   hybrid_program_label: string | null;
   rights_email_date: string | null;
   general_comment: string | null;
+  /** los videos los hace un profesor (no el equipo): los bloques de video se muestran como "Video tutorial" */
+  videos_por_docente: boolean;
   archived: boolean;
   created_at: string;
   updated_at: string;
@@ -111,6 +116,25 @@ export interface ResolvedStep {
   instance: number | null;
   step: StepDef;
 }
+
+/** Bloques del proceso que avisan por correo cuando un paso queda pendiente */
+export type CategoriaEncargado = 'contrato' | 'podcast' | 'cuestionario_final' | 'guias';
+
+export interface CategoryOwner {
+  category: CategoriaEncargado;
+  label: string;
+  userId: number | null;
+  userFullName: string | null;
+  userEmail: string | null;
+}
+
+/** Categorías que avisan por correo a su encargado cuando un paso queda pendiente */
+export const CATEGORIAS_ENCARGADO: Record<CategoriaEncargado, string> = {
+  contrato: 'Tipo de contrato',
+  podcast: 'Podcast',
+  cuestionario_final: 'Cuestionario final',
+  guias: 'Guías',
+};
 
 // ---- Eventos de Socket.IO ----
 

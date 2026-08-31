@@ -35,7 +35,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
     if (sesionVencida) {
       token.clear();
-      location.href = '/login';
+      const destino = location.pathname + location.search;
+      location.href = `/login?from=${encodeURIComponent(destino)}`;
     }
 
     throw new ApiError(res.status, body.error ?? 'Error en la petición');
@@ -48,5 +49,6 @@ export const api = {
   get:   <T>(path: string) => request<T>(path),
   post:  <T>(path: string, body: unknown) => request<T>(path, { method: 'POST',   body: JSON.stringify(body) }),
   patch: <T>(path: string, body: unknown) => request<T>(path, { method: 'PATCH',  body: JSON.stringify(body) }),
+  put:   <T>(path: string, body: unknown) => request<T>(path, { method: 'PUT',    body: JSON.stringify(body) }),
   del:   <T>(path: string) => request<T>(path, { method: 'DELETE' }),
 };

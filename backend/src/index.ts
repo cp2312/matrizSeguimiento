@@ -10,6 +10,7 @@ import { requireAuth } from './middleware/auth.js';
 import { programsRouter } from './routes/programs.js';
 import { subjectsRouter } from './routes/subjects.js';
 import { buildMatrixRouter } from './routes/matrix.js';
+import { encargadosRouter } from './routes/encargados.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -34,6 +35,7 @@ app.use('/api/auth', authRouter);
 app.use('/api/programs', requireAuth, programsRouter);
 app.use('/api', requireAuth, subjectsRouter);
 app.use('/api', requireAuth, buildMatrixRouter(io));
+app.use('/api', requireAuth, encargadosRouter);
 
 app.use((err: any, _req: any, res: any, _next: any) => {
   console.error(err);

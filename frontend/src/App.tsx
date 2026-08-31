@@ -1,18 +1,23 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Login from './pages/Login';
 import Usuarios from './pages/Usuarios';
 import ListadoProgramas from './pages/ListadoProgramas';
 import Programa from './pages/Programas';
+import Asignatura from './pages/Asignatura';
 
 function Protegida({ children }: { children: React.ReactNode }) {
   const { usuario, cargando } = useAuth();
+  const location = useLocation();
 
   if (cargando) {
     return <div className="min-h-screen grid place-items-center text-sm text-slate-500">Cargando…</div>;
   }
 
-  return usuario ? <>{children}</> : <Navigate to="/login" replace />;
+  // Guarda a dónde iba (p. ej. el link de un correo) para volver ahí después de iniciar sesión
+  return usuario
+    ? <>{children}</>
+    : <Navigate to="/login" state={{ from: location.pathname + location.search }} replace />;
 }
 
 function SoloAdmin({ children }: { children: React.ReactNode }) {
@@ -35,6 +40,11 @@ export default function App() {
           <Route
             path="/programas/:id"
             element={<Protegida><Programa /></Protegida>}
+          />
+
+          <Route
+            path="/asignaturas/:id"
+            element={<Protegida><Asignatura /></Protegida>}
           />
 
           <Route

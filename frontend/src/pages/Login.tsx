@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Campo } from '../components/ui/Campo';
 import { Boton } from '../components/ui/Boton';
@@ -11,6 +11,13 @@ import '../styles/login_style.css';
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+
+  // A dónde volver tras iniciar sesión: lo que guardó el guard de rutas (Protegida en
+  // App.tsx) al entrar sin sesión, o el "?from=" que deja una sesión vencida (lib/api.ts)
+  const destino = (location.state as { from?: string } | null)?.from ?? searchParams.get('from');
+  const redirigirA = destino?.startsWith('/') ? destino : '/';
 
   const [form, setForm] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
@@ -24,7 +31,7 @@ export default function Login() {
 
     try {
       await login(form.email, form.password);
-      navigate('/', { replace: true });
+      navigate(redirigirA, { replace: true });
     } catch (err: any) {
       setError(err.message);
     } finally {

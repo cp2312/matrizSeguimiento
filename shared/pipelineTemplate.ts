@@ -1,4 +1,4 @@
-import type { BlockDef, ResolvedStep } from './types.js';
+import type { BlockDef, MatrixCell, ResolvedStep } from './types.js';
 
 
 export const PIPELINE_TEMPLATE: BlockDef[] = [
@@ -65,6 +65,7 @@ export const PIPELINE_TEMPLATE: BlockDef[] = [
         key: 'reporte_turnitin',
         label: 'Reporte Turnitin',
         hasComment: true,
+        commentRequired: true,
         commentLabel: 'Porcentaje en que salió el reporte',
       },
       { key: 'envio_ajustes_experto', label: 'Envío para ajustes de experto', hasComment: true },
@@ -498,4 +499,26 @@ export function isValidStepPath(path: string, credits: number): boolean {
 /** Cuantos pasos tiene en total una asignatura de N creditos */
 export function totalSteps(credits: number): number {
   return buildStepPaths(credits).length;
+}
+
+/**
+ * Oculta los pasos condicionales cuya decision previa no coincide (p. ej.
+ * "Solicitud de ajustes" cuando ya se respondio "No hay ajustes"). Es la
+ * unica fuente de verdad de que pasos aplican realmente -- la usan tanto
+ * el frontend (para no mostrarlos) como el backend (para no contarlos en
+ * el avance ni en el color agregado del tablero).
+ */
+export function pasosVisibles(
+  pasos: ResolvedStep[],
+  celdas: Record<string, Pick<MatrixCell, 'branch_value'>>
+): ResolvedStep[] {
+  return pasos.filter((p) => {
+    if (!p.step.branchOnlyIf) return true;
+
+    const base = p.instance
+      ? `${p.blockKey}.${p.instance}.${p.step.branchOnlyIf.stepKey}`
+      : `${p.blockKey}.${p.step.branchOnlyIf.stepKey}`;
+
+    return celdas[base]?.branch_value === p.step.branchOnlyIf.equals;
+  });
 }

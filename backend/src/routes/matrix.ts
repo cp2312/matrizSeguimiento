@@ -1,10 +1,56 @@
 import { Router } from 'express';
 import type { Server as SocketIOServer } from 'socket.io';
 import { query, queryOne } from '../db/pool.js';
+import { enviarAvisoPendiente } from '../lib/mailer.js';
 import {
-  buildStepPaths, isValidStepPath, findStepDef, totalSteps,
+  buildStepPaths, isValidStepPath, findStepDef, totalSteps, pasosVisibles,
 } from '../../../shared/pipelineTemplate.js';
-import type { MatrixCell, Subject, SubjectTeacher } from '../../../shared/types.js';
+import { CATEGORIAS_ENCARGADO } from '../../../shared/types.js';
+import type { CategoriaEncargado, MatrixCell, Subject, SubjectTeacher } from '../../../shared/types.js';
+
+// Estados que cuentan como "pendiente" para el aviso por correo
+const ESTADOS_PENDIENTE = new Set(['pendiente_equipo', 'pendiente_jefe']);
+
+/**
+ * Si el paso pertenece a una de las categorías monitoreadas y su estado
+ * acaba de pasar A pendiente (no si ya lo estaba), avisa por correo al
+ * encargado de esa categoría, con un link directo al apartado. Nunca
+ * lanza: un correo que falla no debe tumbar el guardado de la celda.
+ */
+async function avisarSiQuedaPendiente(
+  blockKey: string, estadoAnterior: string | undefined, celda: MatrixCell, asignaturaNombre: string, pasoLabel: string
+): Promise<void> {
+  if (!(blockKey in CATEGORIAS_ENCARGADO)) return;
+  if (celda.status !== 'pendiente_equipo' && celda.status !== 'pendiente_jefe') return;
+  if (!ESTADOS_PENDIENTE.has(celda.status) || celda.status === estadoAnterior) return;
+
+  try {
+    const encargado = await queryOne<{ full_name: string; email: string }>(
+      `SELECT u.full_name, u.email FROM category_owners co
+       JOIN users u ON u.id = co.user_id
+       WHERE co.category = $1 AND u.active`,
+      [blockKey]
+    );
+    if (!encargado) return;
+
+    // El "apartado" que abre el link es el step_path sin el último tramo:
+    // "guias.1.recepcion_experto" -> "guias.1"; "contrato.tipo_contrato" -> "contrato"
+    const apartado = celda.step_path.split('.').slice(0, -1).join('.');
+
+    await enviarAvisoPendiente({
+      paraEmail: encargado.email,
+      paraNombre: encargado.full_name,
+      asignatura: asignaturaNombre,
+      categoria: CATEGORIAS_ENCARGADO[blockKey as CategoriaEncargado],
+      paso: pasoLabel,
+      estado: celda.status,
+      subjectId: celda.subject_id,
+      apartado,
+    });
+  } catch (err) {
+    console.error('[matrix] Error al avisar por correo:', err);
+  }
+}
 
 export function buildMatrixRouter(io: SocketIOServer) {
   const router = Router();
@@ -30,7 +76,10 @@ export function buildMatrixRouter(io: SocketIOServer) {
     const celdas: Record<string, MatrixCell> = {};
     for (const fila of filas) celdas[fila.step_path] = fila;
 
-    const terminados = filas.filter(f => f.status === 'terminado').length;
+    // Los pasos condicionales que ya se descartaron (p. ej. "No hay ajustes") no
+    // cuentan para el avance -- si no, nunca se llega al 100% aunque esté todo hecho.
+    const visibles = pasosVisibles(pasos, celdas);
+    const terminados = visibles.filter((p) => celdas[p.path]?.status === 'terminado').length;
 
     res.json({
       asignatura: { ...asignatura, teachers },
@@ -38,8 +87,8 @@ export function buildMatrixRouter(io: SocketIOServer) {
       celdas,
       avance: {
         terminados,
-        total: pasos.length,
-        porcentaje: Math.round((terminados / pasos.length) * 100),
+        total: visibles.length,
+        porcentaje: Math.round((terminados / visibles.length) * 100),
       },
     });
   });
@@ -47,8 +96,9 @@ export function buildMatrixRouter(io: SocketIOServer) {
   // Guardar o actualizar una celda
 router.patch('/subjects/:subjectId/matrix/*stepPath', async (req, res) => {
   const { subjectId } = req.params;
-  const stepPath = (req.params as any).stepPath as string;
-  // ...
+  // En Express 5 un comodin "*nombre" llega como array de segmentos, no como string
+  const stepPathParam = (req.params as any).stepPath;
+  const stepPath = Array.isArray(stepPathParam) ? stepPathParam.join('/') : stepPathParam;
 
     const asignatura = await queryOne<Subject>(
       'SELECT * FROM subjects WHERE id = $1', [subjectId]
@@ -78,6 +128,12 @@ router.patch('/subjects/:subjectId/matrix/*stepPath', async (req, res) => {
     // Las iniciales salen del usuario, no del cliente
     const usuario = (req as any).user ?? { id: null, initials: null };
 
+    // Para saber si el estado recién ENTRA a pendiente (y no si ya lo estaba)
+    const celdaPrevia = await queryOne<{ status: string }>(
+      'SELECT status FROM matrix_cells WHERE subject_id = $1 AND step_path = $2',
+      [subjectId, stepPath]
+    );
+
     try {
       const celda = await queryOne<MatrixCell>(
         `INSERT INTO matrix_cells
@@ -101,8 +157,13 @@ router.patch('/subjects/:subjectId/matrix/*stepPath', async (req, res) => {
         ]
       );
 
+      if (!celda) throw new Error('El INSERT ... RETURNING no devolvió fila');
+
       // Tiempo real: todos los que vean esta asignatura reciben el cambio
       io.to(`subject:${subjectId}`).emit('cell:updated', celda);
+
+      // Aviso por correo: no se espera a que termine para responder al cliente
+      void avisarSiQuedaPendiente(def.block.key, celdaPrevia?.status, celda, asignatura.name, def.step.label);
 
       res.json(celda);
     } catch (err: any) {
@@ -141,47 +202,34 @@ router.get('/programs/:id/tablero', async (req, res) => {
   if (!asignaturas.length) return res.json([]);
 
   const celdas = await query<MatrixCell>(
-    `SELECT c.subject_id, c.step_path, c.status
-     FROM matrix_cells c
+    `SELECT c.* FROM matrix_cells c
      JOIN subjects s ON s.id = c.subject_id
      WHERE s.program_id = $1`,
     [req.params.id]
   );
 
-  // Agrupa los estados por asignatura y bloque
-  const porAsignatura = new Map<number, Map<string, string[]>>();
-
+  // Agrupa las celdas por asignatura, indexadas por step_path (para poder
+  // resolver branch_value igual que en la matriz de una asignatura)
+  const celdasPorAsignatura = new Map<number, Record<string, MatrixCell>>();
   for (const celda of celdas) {
-    const bloque = celda.step_path.split('.')[0];
-    if (!porAsignatura.has(celda.subject_id)) porAsignatura.set(celda.subject_id, new Map());
-    const bloques = porAsignatura.get(celda.subject_id)!;
-    if (!bloques.has(bloque)) bloques.set(bloque, []);
-    bloques.get(bloque)!.push(celda.status);
+    const mapa = celdasPorAsignatura.get(celda.subject_id) ?? {};
+    mapa[celda.step_path] = celda;
+    celdasPorAsignatura.set(celda.subject_id, mapa);
   }
 
   const resultado = asignaturas.map((a) => {
-    const pasos = buildStepPaths(a.credits);
-    const bloques = porAsignatura.get(a.id) ?? new Map<string, string[]>();
+    const celdasDeAsignatura = celdasPorAsignatura.get(a.id) ?? {};
 
-    // Cuenta cuántos pasos totales tiene cada bloque, para saber si está completo
-    const totalPorBloque = new Map<string, number>();
-    for (const p of pasos) {
-      totalPorBloque.set(p.blockKey, (totalPorBloque.get(p.blockKey) ?? 0) + 1);
-    }
+    // Los pasos condicionales ya descartados (p. ej. "No hay ajustes") ni cuentan
+    // ni pintan de blanco un bloque que en realidad ya está completo del todo.
+    const pasos = pasosVisibles(buildStepPaths(a.credits), celdasDeAsignatura);
 
     const estados: Record<string, string[]> = {};
-    for (const [bloque, total] of totalPorBloque) {
-      const guardados = bloques.get(bloque) ?? [];
-      // Los pasos sin fila cuentan como vacíos
-      estados[bloque] = [
-        ...guardados,
-        ...Array(Math.max(0, total - guardados.length)).fill('vacio'),
-      ];
+    for (const p of pasos) {
+      (estados[p.blockKey] ??= []).push(celdasDeAsignatura[p.path]?.status ?? 'vacio');
     }
 
-    const terminados = [...bloques.values()]
-      .flat()
-      .filter((s) => s === 'terminado').length;
+    const terminados = pasos.filter((p) => celdasDeAsignatura[p.path]?.status === 'terminado').length;
 
     return {
       ...a,

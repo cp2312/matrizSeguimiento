@@ -10,6 +10,7 @@ import { Modal } from '../components/ui/Modal';
 import { Alerta } from '../components/ui/Alerta';
 import { Cargando } from '../components/ui/Estado';
 import { TituloPagina } from '../components/ui/TituloPagina';
+import type { CategoryOwner } from '@shared/types';
 
 interface UsuarioFila {
   id: number;
@@ -89,6 +90,8 @@ export default function Usuarios() {
         </div>
       )}
 
+      {usuarios && <EncargadosPorCategoria usuarios={usuarios} />}
+
       <ModalUsuario
         abierto={creando}
         onCerrar={() => setCreando(false)}
@@ -102,6 +105,53 @@ export default function Usuarios() {
         onGuardado={() => { setEditando(null); recargar(); }}
       />
     </Layout>
+  );
+}
+
+/** A quién se le avisa por correo cuando un paso de cada categoría queda pendiente */
+function EncargadosPorCategoria({ usuarios }: { usuarios: UsuarioFila[] }) {
+  const { datos: encargados, error, recargar } = useFetch<CategoryOwner[]>('/encargados');
+  const [guardando, setGuardando] = useState<string | null>(null);
+
+  async function cambiar(category: string, valor: string) {
+    setGuardando(category);
+    try {
+      await api.put(`/encargados/${category}`, { userId: valor ? Number(valor) : null });
+      recargar();
+    } finally {
+      setGuardando(null);
+    }
+  }
+
+  if (!encargados) return null;
+
+  const opciones = [
+    { valor: '', etiqueta: 'Sin asignar' },
+    ...usuarios.filter((u) => u.active).map((u) => ({ valor: String(u.id), etiqueta: u.full_name })),
+  ];
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl p-4 mt-5">
+      <p className="text-sm font-medium text-slate-800">Encargados por categoría</p>
+      <p className="text-xs text-slate-500 mt-0.5 mb-3">
+        Reciben un correo apenas un paso de su categoría queda en "Pendiente equipo" o "Pendiente jefe".
+      </p>
+
+      {error && <Alerta>{error}</Alerta>}
+
+      <div className="grid sm:grid-cols-2 gap-3">
+        {encargados.map((e) => (
+          <Select
+            key={e.category}
+            etiqueta={e.label}
+            opciones={opciones}
+            value={e.userId ? String(e.userId) : ''}
+            disabled={guardando === e.category}
+            onChange={(ev) => cambiar(e.category, ev.target.value)}
+          />
+        ))}
+      </div>
+    </div>
   );
 }
 

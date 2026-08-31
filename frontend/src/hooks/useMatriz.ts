@@ -1,0 +1,75 @@
+import { useCallback, useEffect, useState } from 'react';
+import { api } from '../lib/api';
+import { getSocket } from '../lib/socket';
+import type { MatrixCell, ResolvedStep, Subject, SubjectTeacher } from '@shared/types';
+
+interface RespuestaMatriz {
+  asignatura: Subject & { teachers: SubjectTeacher[] };
+  pasos: ResolvedStep[];
+  celdas: Record<string, MatrixCell>;
+  avance: { terminados: number; total: number; porcentaje: number };
+}
+
+export function useMatriz(subjectId: string | undefined) {
+  const [datos, setDatos] = useState<RespuestaMatriz | null>(null);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const recargar = useCallback(() => {
+    if (!subjectId) return;
+    api.get<RespuestaMatriz>(`/subjects/${subjectId}/matrix`)
+      .then((d) => { setDatos(d); setError(null); })
+      .catch((e) => setError(e.message))
+      .finally(() => setCargando(false));
+  }, [subjectId]);
+
+  useEffect(() => { recargar(); }, [recargar]);
+
+  /** Aplica una celda actualizada sin volver a pedir toda la matriz */
+  const aplicarCelda = useCallback((celda: MatrixCell) => {
+    setDatos((prev) => {
+      if (!prev) return prev;
+
+      const celdas = { ...prev.celdas, [celda.step_path]: celda };
+      const terminados = Object.values(celdas).filter((c) => c.status === 'terminado').length;
+
+      return {
+        ...prev,
+        celdas,
+        avance: {
+          terminados,
+          total: prev.avance.total,
+          porcentaje: Math.round((terminados / prev.avance.total) * 100),
+        },
+      };
+    });
+  }, []);
+
+  // Tiempo real: mientras se ve esta asignatura, refleja los cambios que
+  // guarden otros usuarios sin tener que refrescar la página.
+  useEffect(() => {
+    if (!subjectId) return;
+
+    const socket = getSocket();
+    const id = Number(subjectId);
+
+    const unirse = () => socket.emit('subject:join', id);
+    const onCellUpdated = (celda: MatrixCell) => {
+      if (celda.subject_id === id) aplicarCelda(celda);
+    };
+
+    socket.on('connect', unirse);
+    socket.on('cell:updated', onCellUpdated);
+    socket.connect();
+    if (socket.connected) unirse();
+
+    return () => {
+      socket.emit('subject:leave', id);
+      socket.off('connect', unirse);
+      socket.off('cell:updated', onCellUpdated);
+      socket.disconnect();
+    };
+  }, [subjectId, aplicarCelda]);
+
+  return { datos, cargando, error, recargar, aplicarCelda };
+}

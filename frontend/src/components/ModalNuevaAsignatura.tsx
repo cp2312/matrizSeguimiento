@@ -51,6 +51,7 @@ const VACIO = {
   hybridProgramLabel: '',
   bookName: '',
   generalComment: '',
+  videosPorDocente: false,
 };
 
 export function ModalNuevaAsignatura({ abierto, programa, onCerrar, onCreada }: Props) {
@@ -91,9 +92,9 @@ export function ModalNuevaAsignatura({ abierto, programa, onCerrar, onCreada }: 
       await api.post(`/programs/${programa.id}/subjects`, {
         ...form,
         credits: creditos,
-        modality: programa.is_hybrid ? form.modality : null,
-        hybridProgramLabel: programa.is_hybrid ? form.hybridProgramLabel : null,
-        bookName: libroIgual ? null : form.bookName,
+        modality: programa.type === 'hibrido' ? form.modality : null,
+        hybridProgramLabel: programa.type === 'hibrido' ? form.hybridProgramLabel : null,
+        bookName: libroIgual ? form.bookName : null,
         teachers: docentes.map((d) => ({
           fullName: d.fullName,
           startDate: d.startDate || null,
@@ -116,108 +117,133 @@ export function ModalNuevaAsignatura({ abierto, programa, onCerrar, onCreada }: 
       abierto={abierto}
       titulo="Nueva asignatura"
       subtitulo={programa.name}
+      ancho="grande"
       onCerrar={onCerrar}
     >
-      <form onSubmit={enviar} className="space-y-4">
-        <div className="flex gap-3">
-          <div className="flex-1">
+      <form onSubmit={enviar} className="space-y-5">
+        <div className="flex flex-wrap gap-3">
+          <div className="w-[160px]">
             <Select etiqueta="Semestre" opciones={SEMESTRES} value={form.semester} onChange={set('semester')} />
           </div>
-          <div className="w-24">
+          <div className="w-[100px]">
             <Select etiqueta="Créditos" opciones={CREDITOS} value={form.credits} onChange={set('credits')} />
           </div>
+          <div className="flex-1 min-w-[220px]">
+            <Campo
+              etiqueta="Espacio académico"
+              required
+              autoFocus
+              value={form.name}
+              onChange={set('name')}
+            />
+          </div>
         </div>
 
-        <Campo
-          etiqueta="Espacio académico"
-          required
-          autoFocus
-          value={form.name}
-          onChange={set('name')}
-        />
-
-        {programa.is_hybrid && (
-          <div className="bg-teal-50 rounded-lg p-3 space-y-3">
-            <p className="text-[11px] text-teal-700">Este programa es híbrido</p>
-            <Campo
-              etiqueta="Nombre del programa"
-              required
-              value={form.hybridProgramLabel}
-              onChange={set('hybridProgramLabel')}
-            />
-            <Select etiqueta="Modalidad" opciones={MODALIDADES} value={form.modality} onChange={set('modality')} />
+        {programa.type === 'hibrido' && (
+          <div className="bg-teal-50 rounded-lg p-3">
+            <p className="text-[11px] text-teal-700 mb-3">Este programa es híbrido</p>
+            <div className="flex flex-wrap gap-3">
+              <div className="flex-1 min-w-[220px]">
+                <Campo
+                  etiqueta="Nombre del programa"
+                  required
+                  value={form.hybridProgramLabel}
+                  onChange={set('hybridProgramLabel')}
+                />
+              </div>
+              <div className="w-[160px]">
+                <Select etiqueta="Modalidad" opciones={MODALIDADES} value={form.modality} onChange={set('modality')} />
+              </div>
+            </div>
           </div>
         )}
 
-        <Casilla
-          etiqueta="¿El nombre del programa y el libro es igual?"
-          checked={libroIgual}
-          onChange={(e) => setLibroIgual(e.target.checked)}
-        />
+        <div className="flex flex-wrap items-center gap-3">
+          <Casilla
+            etiqueta="¿El nombre del programa y el libro es igual?"
+            checked={libroIgual}
+            onChange={(e) => setLibroIgual(e.target.checked)}
+          />
 
-        {!libroIgual && (
-          <Campo etiqueta="Nombre del libro" required value={form.bookName} onChange={set('bookName')} />
-        )}
-
-        <div className="space-y-3">
-          <p className="text-sm text-slate-600">Docentes o autores</p>
-
-          {docentes.map((d, i) => (
-            <div key={i} className="bg-slate-50 rounded-lg p-3 space-y-3">
-              <div className="flex gap-2 items-end">
-                <div className="flex-1">
-                  <Campo
-                    etiqueta="Nombre"
-                    required
-                    placeholder="Carlos Mendoza"
-                    value={d.fullName}
-                    onChange={(e) => setDocente(i, 'fullName', e.target.value)}
-                  />
-                </div>
-                {docentes.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => quitarDocente(i)}
-                    aria-label="Quitar docente"
-                    className="h-10 px-3 text-[13px] text-slate-500 hover:text-red-600"
-                  >
-                    Quitar
-                  </button>
-                )}
-              </div>
-
-              <div className="flex gap-3">
-                <div className="flex-1">
-                  <Campo
-                    etiqueta="Inicio de contrato"
-                    type="date"
-                    value={d.startDate}
-                    onChange={(e) => setDocente(i, 'startDate', e.target.value)}
-                  />
-                </div>
-                <div className="flex-1">
-                  <Campo
-                    etiqueta="Fin de contrato"
-                    type="date"
-                    value={d.endDate}
-                    onChange={(e) => setDocente(i, 'endDate', e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <Campo
-                etiqueta="Tipo de contrato"
-                placeholder="Prestación de servicios"
-                value={d.contractType}
-                onChange={(e) => setDocente(i, 'contractType', e.target.value)}
-              />
+          {libroIgual && (
+            <div className="flex-1 min-w-[220px]">
+              <Campo etiqueta="Nombre del libro" required value={form.bookName} onChange={set('bookName')} />
             </div>
-          ))}
-
-          <Boton type="button" onClick={agregarDocente} className="text-[13px]">
-            + Agregar docente
-          </Boton>
+          )}
         </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-sm text-slate-600">Docentes o autores</p>
+            <button
+              type="button"
+              onClick={agregarDocente}
+              className="text-[13px] font-medium text-marca-600 hover:text-marca-700 transition-colors"
+            >
+              + Agregar docente
+            </button>
+          </div>
+
+          <div className="space-y-2">
+            {docentes.map((d, i) => (
+              <div key={i} className="bg-slate-50 rounded-lg p-3">
+                <div className="flex flex-wrap items-end gap-3">
+                  <div className="flex-1 min-w-[200px]">
+                    <Campo
+                      etiqueta="Nombre"
+                      required
+                      placeholder="Carlos Mendoza"
+                      value={d.fullName}
+                      onChange={(e) => setDocente(i, 'fullName', e.target.value)}
+                    />
+                  </div>
+                  <div className="w-[136px] shrink-0">
+                    <Campo
+                      etiqueta="Inicio"
+                      type="date"
+                      value={d.startDate}
+                      onChange={(e) => setDocente(i, 'startDate', e.target.value)}
+                    />
+                  </div>
+                  <div className="w-[136px] shrink-0">
+                    <Campo
+                      etiqueta="Fin"
+                      type="date"
+                      value={d.endDate}
+                      onChange={(e) => setDocente(i, 'endDate', e.target.value)}
+                    />
+                  </div>
+                  <div className="flex-1 min-w-[180px]">
+                    <Campo
+                      etiqueta="Tipo de contrato"
+                      placeholder="Prestación de servicios"
+                      value={d.contractType}
+                      onChange={(e) => setDocente(i, 'contractType', e.target.value)}
+                    />
+                  </div>
+                  {docentes.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => quitarDocente(i)}
+                      aria-label="Quitar docente"
+                      title="Quitar docente"
+                      className="h-10 w-10 grid place-items-center rounded-lg text-slate-400
+                                 hover:text-red-600 hover:bg-red-50 transition-colors shrink-0"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <Casilla
+          etiqueta="Los videos los graba el profesor (se muestran como &quot;Video tutorial&quot;)"
+          checked={form.videosPorDocente}
+          onChange={(e) => setForm({ ...form, videosPorDocente: e.target.checked })}
+        />
 
         <AreaTexto
           etiqueta="Observaciones"
