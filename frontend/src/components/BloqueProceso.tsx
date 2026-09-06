@@ -1,5 +1,6 @@
+import { Fragment } from 'react';
 import { CeldaProceso } from './CeldaProceso';
-import { pasosVisibles } from '../lib/bloques';
+import { pasosVisibles, etiquetaPaso } from '../lib/bloques';
 import type { MatrixCell, ResolvedStep } from '@shared/types';
 
 interface Props {
@@ -19,17 +20,49 @@ export function BloqueProceso({
   const visibles = pasosVisibles(pasos, celdas);
   const terminados = visibles.filter((p) => celdas[p.path]?.status === 'terminado').length;
 
+  // Para un paso repetible dentro de su bloque (p. ej. los reintentos de
+  // Turnitin en "Libro"), ubica cuál es el último intento que se alcanza a
+  // ver -- justo después de ese va el botón para revelar el siguiente.
+  const ultimoVisiblePorPaso = new Map<string, number>();
+  for (const p of visibles) {
+    if (p.step.repeatable && p.instance) {
+      const clave = `${p.blockKey}.${p.step.key}`;
+      ultimoVisiblePorPaso.set(clave, Math.max(ultimoVisiblePorPaso.get(clave) ?? 0, p.instance));
+    }
+  }
+
   const celdasEl = (
     <div className={soloContenido ? 'flex flex-wrap gap-1.5' : 'flex gap-1.5 overflow-x-auto pb-1'}>
-      {visibles.map((p) => (
-        <CeldaProceso
-          key={p.path}
-          paso={p.step}
-          celda={celdas[p.path]}
-          seleccionada={seleccionado === p.path}
-          onClick={() => onSeleccionar(p.path)}
-        />
-      ))}
+      {visibles.map((p) => {
+        const clave = p.step.repeatable ? `${p.blockKey}.${p.step.key}` : null;
+        const esUltimoVisible = clave !== null && p.instance === ultimoVisiblePorPaso.get(clave);
+        const siguienteInstancia = p.instance !== null ? p.instance + 1 : null;
+        const puedeAgregarMas =
+          esUltimoVisible && siguienteInstancia !== null && siguienteInstancia <= p.step.repeatable!.max;
+
+        return (
+          <Fragment key={p.path}>
+            <CeldaProceso
+              paso={p.step}
+              etiqueta={etiquetaPaso(p.step, p.instance)}
+              celda={celdas[p.path]}
+              seleccionada={seleccionado === p.path}
+              onClick={() => onSeleccionar(p.path)}
+            />
+            {puedeAgregarMas && (
+              <button
+                type="button"
+                onClick={() => onSeleccionar(`${p.blockKey}.${siguienteInstancia}.${p.step.key}`)}
+                className="min-w-[104px] shrink-0 p-2 rounded-lg border border-dashed border-slate-300
+                           text-slate-400 text-[11px] leading-tight text-center grid place-items-center
+                           hover:border-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors"
+              >
+                + Agregar otro reporte
+              </button>
+            )}
+          </Fragment>
+        );
+      })}
     </div>
   );
 

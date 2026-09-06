@@ -2,22 +2,28 @@ import { Router } from 'express';
 import type { PoolClient } from 'pg';
 import { query, queryOne, withTransaction } from '../db/pool.js';
 import { totalSteps } from '../../../shared/pipelineTemplate.js';
-import type { Subject, SubjectTeacher } from '../../../shared/types.js';
+import type { MatrixCell, Subject, SubjectTeacher } from '../../../shared/types.js';
 
 export const subjectsRouter = Router();
 
 interface DocenteEntrada {
+  /** presente = docente ya existente (se actualiza); ausente = docente nuevo (se inserta) */
+  id?: number;
   fullName?: string;
   startDate?: string | null;
   endDate?: string | null;
   contractType?: string | null;
 }
 
-/** Valida la lista de docentes que llega del cliente. Devuelve el error o null. */
+/**
+ * Valida la lista de docentes que llega del cliente. No hace falta ninguno al
+ * crear la asignatura -- todavía no se sabe quién queda asignado -- pero si
+ * llega alguno, sí necesita nombre.
+ */
 function validarDocentes(teachers: unknown): string | null {
-  if (!Array.isArray(teachers) || teachers.length === 0) {
-    return 'La asignatura debe tener al menos un docente';
-  }
+  if (teachers === undefined) return null;
+  if (!Array.isArray(teachers)) return 'Los docentes deben ser una lista';
+
   for (const t of teachers as DocenteEntrada[]) {
     if (!t.fullName?.trim()) {
       return 'Todos los docentes deben tener un nombre';
@@ -26,20 +32,50 @@ function validarDocentes(teachers: unknown): string | null {
   return null;
 }
 
-/** Reemplaza por completo los docentes de una asignatura dentro de una transaccion. */
+/**
+ * Sincroniza los docentes de una asignatura con la lista que llega del cliente,
+ * dentro de una transaccion. A los que ya traen `id` se les hace UPDATE (conserva
+ * su id); a los que no, INSERT; y se borra cualquier docente existente que ya no
+ * venga en la lista.
+ *
+ * OJO: antes esto borraba y reinsertaba todos los docentes en cada guardado, lo
+ * que les cambiaba el id incluso al editar un solo campo de uno solo. Como el
+ * apartado "Tipo de contrato" guarda cada fecha por separado (onBlur de fecha
+ * inicio, luego onBlur de fecha fin), ese cambio de id remontaba la lista completa
+ * en el cliente a mitad de la edición y se perdía la fecha que se estaba por
+ * escribir. Actualizar por id en vez de recrear todo lo evita.
+ */
 async function guardarDocentes(
   client: PoolClient, subjectId: number, teachers: DocenteEntrada[]
 ): Promise<SubjectTeacher[]> {
-  await client.query('DELETE FROM subject_teachers WHERE subject_id = $1', [subjectId]);
+  const idsExistentes = teachers.filter((t) => t.id != null).map((t) => t.id!);
+
+  await client.query(
+    'DELETE FROM subject_teachers WHERE subject_id = $1 AND NOT (id = ANY($2::int[]))',
+    [subjectId, idsExistentes]
+  );
 
   const guardados: SubjectTeacher[] = [];
   for (const t of teachers) {
-    const { rows } = await client.query<SubjectTeacher>(
-      `INSERT INTO subject_teachers (subject_id, full_name, start_date, end_date, contract_type)
-       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-      [subjectId, t.fullName!.trim(), t.startDate ?? null, t.endDate ?? null, t.contractType ?? null]
-    );
-    guardados.push(rows[0]);
+    if (t.id != null) {
+      const { rows } = await client.query<SubjectTeacher>(
+        // Si la fecha de fin cambió, se rehabilita el aviso de "contrato por
+        // vencer" para esta fila -- si no, editar cualquier otro campo del
+        // docente nunca volvería a avisar aunque se extienda el contrato.
+        `UPDATE subject_teachers SET full_name=$1, start_date=$2, end_date=$3, contract_type=$4,
+                contract_warning_sent_at = CASE WHEN end_date IS DISTINCT FROM $3 THEN NULL ELSE contract_warning_sent_at END
+         WHERE id=$5 AND subject_id=$6 RETURNING *`,
+        [t.fullName!.trim(), t.startDate ?? null, t.endDate ?? null, t.contractType ?? null, t.id, subjectId]
+      );
+      if (rows[0]) guardados.push(rows[0]);
+    } else {
+      const { rows } = await client.query<SubjectTeacher>(
+        `INSERT INTO subject_teachers (subject_id, full_name, start_date, end_date, contract_type)
+         VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+        [subjectId, t.fullName!.trim(), t.startDate ?? null, t.endDate ?? null, t.contractType ?? null]
+      );
+      guardados.push(rows[0]);
+    }
   }
   return guardados;
 }
@@ -51,18 +87,21 @@ async function docentesDe(subjectId: number): Promise<SubjectTeacher[]> {
 }
 
 /**
- * El tipo de contrato ya se captura por docente al crear/editar la asignatura,
- * asi que ese paso del proceso ("contrato.tipo_contrato") se marca solo como
- * terminado en cuanto algun docente tiene tipo de contrato cargado -- no hace
- * falta volver a marcarlo a mano. Si el paso ya tiene un estado (por ejemplo
- * alguien lo cambio a mano despues), no lo pisa.
+ * El tipo de contrato de cada docente se llena desde el apartado "Tipo de
+ * contrato" (no al crear/editar la asignatura), asi que ese paso del proceso
+ * se marca solo como terminado en cuanto algun docente tiene tipo de contrato
+ * cargado -- no hace falta volver a marcarlo a mano. Si el paso ya tiene un
+ * estado (por ejemplo alguien lo cambio a mano despues), no lo pisa.
+ *
+ * Devuelve la celda vigente (se haya tocado o no en esta llamada) para que
+ * el cliente pueda reflejarla sin tener que recargar toda la matriz.
  */
 async function marcarTipoContrato(
   client: PoolClient, subjectId: number, docentes: SubjectTeacher[],
   usuario: { id: number; initials: string } | undefined
-): Promise<void> {
+): Promise<MatrixCell | null> {
   const hayTipoContrato = docentes.some((d) => d.contract_type?.trim());
-  if (!hayTipoContrato || !usuario) return;
+  if (!hayTipoContrato || !usuario) return null;
 
   await client.query(
     `INSERT INTO matrix_cells (subject_id, step_path, status, done_date, initials, updated_by)
@@ -70,6 +109,12 @@ async function marcarTipoContrato(
      ON CONFLICT (subject_id, step_path) DO NOTHING`,
     [subjectId, usuario.initials, usuario.id]
   );
+
+  const { rows } = await client.query<MatrixCell>(
+    `SELECT * FROM matrix_cells WHERE subject_id = $1 AND step_path = 'contrato.tipo_contrato'`,
+    [subjectId]
+  );
+  return rows[0] ?? null;
 }
 
 // Asignaturas de un programa
@@ -133,9 +178,9 @@ subjectsRouter.post('/programs/:programId/subjects', async (req, res) => {
         ]
       );
       const asignatura = rows[0];
-      const docentes = await guardarDocentes(client, asignatura.id, teachers);
-      await marcarTipoContrato(client, asignatura.id, docentes, req.user);
-      return { ...asignatura, teachers: docentes };
+      const docentes = await guardarDocentes(client, asignatura.id, teachers ?? []);
+      const contratoCelda = await marcarTipoContrato(client, asignatura.id, docentes, req.user);
+      return { ...asignatura, teachers: docentes, contratoCelda };
     });
 
     res.status(201).json(resultado);
@@ -201,8 +246,8 @@ subjectsRouter.patch('/subjects/:id', async (req, res) => {
         ? await guardarDocentes(client, asignatura.id, b.teachers)
         : await docentesDe(asignatura.id);
 
-      await marcarTipoContrato(client, asignatura.id, teachers, req.user);
-      return { ...asignatura, teachers };
+      const contratoCelda = await marcarTipoContrato(client, asignatura.id, teachers, req.user);
+      return { ...asignatura, teachers, contratoCelda };
     });
 
     res.json(resultado);

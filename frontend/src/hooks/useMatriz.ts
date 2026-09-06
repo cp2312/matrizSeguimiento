@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { getSocket } from '../lib/socket';
+import { pasosVisibles, excluirInstanciasExtraSinUsar } from '@shared/pipelineTemplate';
 import type { MatrixCell, ResolvedStep, Subject, SubjectTeacher } from '@shared/types';
 
 interface RespuestaMatriz {
@@ -25,24 +26,36 @@ export function useMatriz(subjectId: string | undefined) {
 
   useEffect(() => { recargar(); }, [recargar]);
 
-  /** Aplica una celda actualizada sin volver a pedir toda la matriz */
+  /**
+   * Aplica una celda actualizada sin volver a pedir toda la matriz. Recalcula
+   * el avance con la misma lógica que usa el backend (no solo reusar el total
+   * anterior) porque puede cambiar: guardar el primer dato de una instancia
+   * extra de un bloque extensible (p. ej. un segundo "Video de contenido")
+   * la revela y suma sus pasos al total en el momento.
+   */
   const aplicarCelda = useCallback((celda: MatrixCell) => {
     setDatos((prev) => {
       if (!prev) return prev;
 
       const celdas = { ...prev.celdas, [celda.step_path]: celda };
-      const terminados = Object.values(celdas).filter((c) => c.status === 'terminado').length;
+      const visibles = pasosVisibles(excluirInstanciasExtraSinUsar(prev.pasos, celdas), celdas);
+      const terminados = visibles.filter((p) => celdas[p.path]?.status === 'terminado').length;
 
       return {
         ...prev,
         celdas,
         avance: {
           terminados,
-          total: prev.avance.total,
-          porcentaje: Math.round((terminados / prev.avance.total) * 100),
+          total: visibles.length,
+          porcentaje: Math.round((terminados / visibles.length) * 100),
         },
       };
     });
+  }, []);
+
+  /** Aplica la lista de docentes actualizada sin volver a pedir toda la matriz */
+  const aplicarTeachers = useCallback((teachers: SubjectTeacher[]) => {
+    setDatos((prev) => (prev ? { ...prev, asignatura: { ...prev.asignatura, teachers } } : prev));
   }, []);
 
   // Tiempo real: mientras se ve esta asignatura, refleja los cambios que
@@ -71,5 +84,5 @@ export function useMatriz(subjectId: string | undefined) {
     };
   }, [subjectId, aplicarCelda]);
 
-  return { datos, cargando, error, recargar, aplicarCelda };
+  return { datos, cargando, error, recargar, aplicarCelda, aplicarTeachers };
 }

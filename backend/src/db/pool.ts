@@ -3,6 +3,15 @@ import pg from 'pg';
 
 const { Pool } = pg;
 
+// Por defecto, node-pg convierte las columnas DATE a un objeto Date de JS, que
+// Express serializa a JSON como timestamp completo ("2026-01-15T05:00:00.000Z").
+// Eso rompe cualquier <input type="date"> del frontend, que solo acepta
+// "YYYY-MM-DD" -- el campo se ve vacío aunque el valor sí esté guardado. Se
+// desactiva esa conversión (oid 1082 = tipo "date") para que viaje tal cual
+// como string "YYYY-MM-DD", sin pasar por Date ni arriesgar corrimientos de
+// zona horaria.
+pg.types.setTypeParser(1082, (val) => val);
+
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });

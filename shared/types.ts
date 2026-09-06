@@ -12,7 +12,15 @@ export type UserRole = 'usuario' | 'administrador';
 
 export type SubjectModality = 'presencial' | 'virtual';
 
-/** Tipo de un programa. Solo "hibrido" pide modalidad por asignatura */
+/**
+ * Tipo de un programa.
+ *   presencial: mayormente presencial, pero puede tener asignaturas puntuales
+ *               en modalidad virtual -- no se elige modalidad por asignatura,
+ *               pero cada asignatura lleva el nombre del programa asociado.
+ *   virtual:    todo el programa es virtual, sin eleccion por asignatura.
+ *   hibrido:    tiene asignaturas presenciales y virtuales por igual; cada
+ *               asignatura elige su modalidad, pero no lleva nombre de programa.
+ */
 export type ProgramType = 'hibrido' | 'presencial' | 'virtual';
 
 /** Definición de un paso individual dentro de un bloque */
@@ -22,6 +30,26 @@ export interface StepDef {
   hasComment: boolean;
   commentRequired?: boolean;
   commentLabel?: string;
+  /** segundo campo de texto libre, para pasos que necesitan anotar dos datos
+   *  a la vez (p. ej. porcentaje de Turnitin y porcentaje de IA) */
+  hasSecondComment?: boolean;
+  secondCommentRequired?: boolean;
+  secondCommentLabel?: string;
+  /**
+   * Este paso puntual se repite dentro de su mismo bloque (p. ej. reintentos
+   * del reporte Turnitin dentro de "Libro") -- a diferencia de `repeatable`
+   * en BlockDef, el resto de los pasos del bloque quedan fijos, solo este se
+   * repite. Genera step_path del tipo "bloque.instancia.paso".
+   */
+  repeatable?: { max: number; itemLabel: string };
+  /**
+   * Este paso admite una fecha límite propia (independiente de si ya está
+   * terminado). Cuando está por vencer y el paso aún no está en 'terminado',
+   * se avisa por correo al encargado de la categoría del bloque -- ver
+   * backend/src/lib/dueDateWarnings.ts.
+   */
+  hasDueDate?: boolean;
+  dueDateLabel?: string;
   /** este paso es un punto de decisión (¿hay ajustes?) */
   isBranchPoint?: boolean;
   /** este paso solo se muestra si la decisión indicada tiene cierto valor */
@@ -39,6 +67,13 @@ export interface BlockDef {
     /** true = la cantidad sale de los créditos; false = siempre el máximo */
     perCredit: boolean;
     itemLabel: string;
+    /**
+     * Además de las instancias que salen por créditos, deja agregar
+     * instancias extra a mano hasta `max` (p. ej. otro Video de contenido
+     * si hace falta). Empiezan ocultas -- solo cuentan y se ven una vez que
+     * tienen algún dato guardado (ver instanciasExtraEnUso/gruposVisibles).
+     */
+    extensible?: boolean;
   };
   /** bloque que aún está por confirmar si se sigue usando */
   optionalBlock?: boolean;
@@ -91,6 +126,8 @@ export interface SubjectTeacher {
   start_date: string | null;
   end_date: string | null;
   contract_type: string | null;
+  /** última vez que se avisó que este contrato está por vencer y la matriz aún tiene pendientes */
+  contract_warning_sent_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -103,7 +140,13 @@ export interface MatrixCell {
   done_date: string | null;
   initials: string | null;
   comment: string | null;
+  second_comment: string | null;
   branch_value: boolean | null;
+  /** fecha límite del paso, solo cuando StepDef.hasDueDate */
+  due_date: string | null;
+  /** última vez que se avisó que esta fecha límite está por vencer */
+  due_date_warning_sent_at: string | null;
+  version: number;
   updated_at: string;
   updated_by: number | null;
 }
@@ -114,11 +157,26 @@ export interface ResolvedStep {
   blockKey: string;
   blockLabel: string;
   instance: number | null;
+  /**
+   * true salvo que sea una instancia "extra" de un bloque extensible (ver
+   * BlockDef.repeatable.extensible) -- una que va más allá de lo que
+   * corresponde por créditos y que solo cuenta/se ve si ya tiene datos.
+   */
+  garantizada: boolean;
   step: StepDef;
 }
 
-/** Bloques del proceso que avisan por correo cuando un paso queda pendiente */
-export type CategoriaEncargado = 'contrato' | 'podcast' | 'cuestionario_final' | 'guias';
+/**
+ * Bloques del proceso que avisan por correo a su encargado cuando un paso
+ * queda "En proceso" (pendiente_equipo), o (ovas/podcast/video_contenido/
+ * guias) cuando la fecha límite de uno de sus pasos está por vencer. "jefe"
+ * es distinto a los demás: no es un bloque del proceso, es a quién se le
+ * avisa de CUALQUIER paso (de cualquier apartado) que quede en "Pendiente
+ * jefe" -- se maneja con el mismo mecanismo de encargados por conveniencia,
+ * no porque sea una categoría más.
+ */
+export type CategoriaEncargado =
+  | 'contrato' | 'podcast' | 'cuestionario_final' | 'guias' | 'ovas' | 'video_contenido' | 'jefe';
 
 export interface CategoryOwner {
   category: CategoriaEncargado;
@@ -128,12 +186,14 @@ export interface CategoryOwner {
   userEmail: string | null;
 }
 
-/** Categorías que avisan por correo a su encargado cuando un paso queda pendiente */
 export const CATEGORIAS_ENCARGADO: Record<CategoriaEncargado, string> = {
   contrato: 'Tipo de contrato',
   podcast: 'Podcast',
   cuestionario_final: 'Cuestionario final',
   guias: 'Guías',
+  ovas: 'OVA',
+  video_contenido: 'Video de contenido',
+  jefe: 'Jefe (todo lo que quede "Pendiente jefe")',
 };
 
 // ---- Eventos de Socket.IO ----
@@ -144,5 +204,6 @@ export interface CellUpdatePayload {
   status?: CellStatus;
   doneDate?: string | null;
   comment?: string | null;
+  secondComment?: string | null;
   branchValue?: boolean | null;
 }

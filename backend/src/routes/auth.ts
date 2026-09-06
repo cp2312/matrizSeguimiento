@@ -1,7 +1,8 @@
-import { Router } from 'express';
+﻿import { Router } from 'express';
 import bcrypt from 'bcrypt';
 import { query, queryOne } from '../db/pool.js';
 import { firmarToken, requireAuth, requireAdmin } from '../middleware/auth.js';
+import { rateLimit, resetIntentos } from '../lib/rateLimit.js';
 
 export const authRouter = Router();
 
@@ -20,15 +21,27 @@ authRouter.post('/login', async (req, res) => {
     [email.trim()]
   );
 
-
   if (!usuario || !usuario.active) {
     return res.status(401).json({ error: 'Credenciales incorrectas' });
+  }
+
+  // Rate limiting: max 5 intentos fallidos por IP+email en 15 minutos
+  const ip = req.ip ?? req.socket.remoteAddress ?? 'unknown';
+  const resultadoRL = rateLimit(ip, email);
+  if (!resultadoRL.permitido) {
+    return res.status(429).json({
+      error: 'Demasiados intentos fallidos. Intenta de nuevo más tarde.',
+      retryAfter: resultadoRL.retryAfter,
+    });
   }
 
   const coincide = await bcrypt.compare(password, usuario.password_hash);
   if (!coincide) {
     return res.status(401).json({ error: 'Credenciales incorrectas' });
   }
+
+  // Login exitoso: resetear contador de intentos
+  resetIntentos(ip, email);
 
   const datos = {
     id: usuario.id,
@@ -37,12 +50,25 @@ authRouter.post('/login', async (req, res) => {
     full_name: usuario.full_name,
   };
 
-  res.json({ token: firmarToken(datos), usuario: datos });
+  const { token: jwtToken, expiresIn } = firmarToken(datos);
+  res.json({ token: jwtToken, expiresIn, usuario: datos });
 });
 
 
 authRouter.get('/me', requireAuth, (req, res) => {
   res.json(req.user);
+});
+
+// Refresh: si el token actual es válido pero está por expirar, devuelve uno nuevo
+authRouter.post('/refresh', requireAuth, (req, res) => {
+  const datos = {
+    id: req.user!.id,
+    initials: req.user!.initials,
+    role: req.user!.role,
+    full_name: req.user!.full_name,
+  };
+  const { token: jwtToken, expiresIn } = firmarToken(datos);
+  res.json({ token: jwtToken, expiresIn });
 });
 
 

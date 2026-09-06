@@ -1,6 +1,6 @@
--- ============================================================================
+﻿-- ============================================================================
 --  MATRIZ DE SEGUIMIENTO A PROFESORES
---  Esquema completo — PostgreSQL
+--  Esquema completo â€” PostgreSQL
 --
 --  Orden de creacion:
 --    1. Tipos enumerados
@@ -55,10 +55,14 @@ CREATE TYPE subject_modality AS ENUM (
 );
 
 -- Tipo de un programa academico.
---   hibrido:    tiene asignaturas presenciales y virtuales a la vez;
---               cada asignatura elige su propia modalidad (ver subject_modality).
---   presencial: todo el programa es presencial, sin eleccion por asignatura.
+--   presencial: mayormente presencial, pero admite asignaturas puntuales en
+--               modalidad virtual; esas asignaturas llevan el nombre del
+--               programa asociado (ver subjects.hybrid_program_label), sin
+--               eleccion de modalidad por asignatura.
 --   virtual:    todo el programa es virtual, sin eleccion por asignatura.
+--   hibrido:    tiene asignaturas presenciales y virtuales por igual; cada
+--               asignatura elige su propia modalidad (ver subject_modality),
+--               pero no lleva nombre de programa.
 CREATE TYPE program_type AS ENUM (
   'hibrido',
   'presencial',
@@ -100,7 +104,7 @@ CREATE TABLE users (
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
 
-  CONSTRAINT chk_initials_formato CHECK (initials ~ '^[A-ZÑ]{2,4}$'),
+  CONSTRAINT chk_initials_formato CHECK (initials ~ '^[A-ZÃ‘]{2,4}$'),
   CONSTRAINT chk_email_formato    CHECK (email LIKE '%_@_%._%')
 );
 
@@ -126,7 +130,7 @@ CREATE TABLE programs (
 );
 
 COMMENT ON COLUMN programs.notes     IS 'Notas de especificaciones del programa';
-COMMENT ON COLUMN programs.type      IS 'hibrido, presencial o virtual -- solo hibrido pide modalidad por asignatura';
+COMMENT ON COLUMN programs.type      IS 'hibrido, presencial o virtual -- hibrido pide modalidad por asignatura; presencial (con asignatura virtual) pide el nombre del programa';
 COMMENT ON COLUMN programs.archived  IS 'Se oculta de la vista principal sin borrar el historico';
 
 
@@ -147,6 +151,7 @@ CREATE TABLE subjects (
 
   -- Solo aplica cuando el programa es hibrido
   modality             subject_modality,
+  -- Solo aplica cuando el programa es presencial (con asignatura virtual)
   hybrid_program_label TEXT,
 
   -- Firma de derechos y registro DN/DA
@@ -155,7 +160,7 @@ CREATE TABLE subjects (
   -- Observaciones generales de la asignatura
   general_comment TEXT,
 
-  -- Cuando los hace un profesor en vez del equipo de producción, los bloques
+  -- Cuando los hace un profesor en vez del equipo de producciÃ³n, los bloques
   -- de video se muestran como "Video tutorial" en toda la interfaz.
   videos_por_docente BOOLEAN NOT NULL DEFAULT FALSE,
 
@@ -177,7 +182,7 @@ CREATE TABLE subjects (
 COMMENT ON COLUMN subjects.name                 IS 'Espacio academico';
 COMMENT ON COLUMN subjects.book_name            IS 'Se llena solo cuando el libro NO comparte nombre con la asignatura';
 COMMENT ON COLUMN subjects.credits              IS 'De 1 a 5. Define cuantas OVAs, videos de contenido y guias se generan: 1 por credito';
-COMMENT ON COLUMN subjects.hybrid_program_label IS 'Nombre del programa asociado; solo en pregrados hibridos';
+COMMENT ON COLUMN subjects.hybrid_program_label IS 'Nombre del programa asociado; solo en programas presenciales con asignatura virtual';
 COMMENT ON COLUMN subjects.rights_email_date    IS 'Fecha de envio de correos de firma de derechos';
 
 
@@ -198,6 +203,12 @@ CREATE TABLE subject_teachers (
   end_date   DATE,
 
   contract_type TEXT,
+
+  -- CuÃ¡ndo se avisÃ³ por Ãºltima vez que este contrato estÃ¡ por vencer y la
+  -- matriz todavÃ­a tiene pendientes. NULL = no se ha avisado (o se volviÃ³ a
+  -- habilitar el aviso porque cambiÃ³ la fecha de fin). Evita reenviar el
+  -- mismo aviso una y otra vez.
+  contract_warning_sent_at TIMESTAMPTZ,
 
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -245,10 +256,22 @@ CREATE TABLE matrix_cells (
   -- Que comentarios son obligatorios lo valida el backend con la plantilla.
   comment TEXT,
 
+  -- Segundo campo de texto libre, para pasos que necesitan anotar dos datos a
+  -- la vez (p. ej. % de Turnitin y % de IA en el reporte de Turnitin del libro).
+  second_comment TEXT,
+
   -- Solo para pasos de decision del tipo "hay ajustes?".
   -- TRUE / FALSE / NULL (aun sin decidir). Con esto el frontend decide si
   -- muestra u oculta los pasos de solicitud y validacion de ajustes.
   branch_value BOOLEAN,
+
+  -- Solo para pasos con StepDef.hasDueDate (creacion_guion de OVA/Podcast/
+  -- Video de contenido, recepcion_experto de Guias): fecha limite objetivo,
+  -- independiente de si el paso ya esta terminado. Cuando esta por vencer y
+  -- el paso todavia no esta en 'terminado', se avisa por correo al
+  -- encargado de esa categoria (ver backend/src/lib/dueDateWarnings.ts).
+  due_date                 DATE,
+  due_date_warning_sent_at TIMESTAMPTZ,
 
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -307,15 +330,17 @@ CREATE TABLE category_owners (
 );
 
 COMMENT ON TABLE  category_owners          IS 'Encargado por categoria del proceso que recibe el correo de aviso cuando algo queda pendiente';
-COMMENT ON COLUMN category_owners.category IS 'Clave del bloque del proceso: contrato, podcast, cuestionario_final o guias';
+COMMENT ON COLUMN category_owners.category IS 'Clave del bloque del proceso (contrato, podcast, cuestionario_final, guias, ovas, video_contenido), o "jefe" (avisa de cualquier "Pendiente jefe", no es un bloque)';
 
 CREATE TRIGGER trg_category_owners_touch BEFORE UPDATE ON category_owners
   FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 
 -- Categorias monitoreadas por el aviso de correo. Si se agrega una nueva,
 -- basta con insertarla aqui -- el backend valida contra esta tabla.
+-- "jefe" es especial: no es un bloque del proceso, es a quien se le avisa
+-- de CUALQUIER paso que quede en "Pendiente jefe".
 INSERT INTO category_owners (category) VALUES
-  ('contrato'), ('podcast'), ('cuestionario_final'), ('guias')
+  ('contrato'), ('podcast'), ('cuestionario_final'), ('guias'), ('ovas'), ('video_contenido'), ('jefe')
 ON CONFLICT (category) DO NOTHING;
 
 
@@ -368,7 +393,8 @@ BEGIN
     VALUES (NEW.subject_id, NEW.step_path, NULL, NEW.status, NEW.comment, NEW.updated_by);
 
   ELSIF (NEW.status IS DISTINCT FROM OLD.status
-      OR NEW.comment IS DISTINCT FROM OLD.comment) THEN
+      OR NEW.comment IS DISTINCT FROM OLD.comment
+      OR NEW.second_comment IS DISTINCT FROM OLD.second_comment) THEN
     INSERT INTO cell_history (subject_id, step_path, old_status, new_status, old_comment, new_comment, changed_by)
     VALUES (NEW.subject_id, NEW.step_path, OLD.status, NEW.status, OLD.comment, NEW.comment, NEW.updated_by);
   END IF;
@@ -384,7 +410,7 @@ CREATE TRIGGER trg_cells_historial
 
 -- Impide que una asignatura de un programa NO hibrido tenga modalidad.
 -- Esta validacion cruza dos tablas, por eso va en trigger y no en CHECK.
-CREATE OR REPLACE FUNCTION validar_modalidad_hibrida()
+CREATE OR REPLACE FUNCTION validar_modalidad_asignatura()
 RETURNS TRIGGER AS $$
 DECLARE
   tipo_programa program_type;
@@ -405,7 +431,7 @@ $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trg_subjects_modalidad
   BEFORE INSERT OR UPDATE ON subjects
-  FOR EACH ROW EXECUTE FUNCTION validar_modalidad_hibrida();
+  FOR EACH ROW EXECUTE FUNCTION validar_modalidad_asignatura();
 
 
 -- ============================================================================
@@ -450,7 +476,8 @@ SELECT
   c.initials,
   c.comment,
   c.updated_at,
-  u.full_name AS actualizado_por
+  u.full_name AS actualizado_por,
+  c.second_comment
 FROM matrix_cells c
 JOIN subjects s      ON s.id = c.subject_id
 JOIN programs p      ON p.id = s.program_id

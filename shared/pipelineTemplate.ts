@@ -1,4 +1,4 @@
-import type { BlockDef, MatrixCell, ResolvedStep } from './types.js';
+import type { BlockDef, MatrixCell, ResolvedStep, StepDef } from './types.js';
 
 
 export const PIPELINE_TEMPLATE: BlockDef[] = [
@@ -21,24 +21,8 @@ export const PIPELINE_TEMPLATE: BlockDef[] = [
   },
 
   // --------------------------------------------------------------------------
-  //  Entregables — vigencia del contrato
-  //  Las fechas de inicio y fin viven en la tabla subjects, no aqui.
-  // --------------------------------------------------------------------------
-  {
-    key: 'entregables',
-    label: 'Entregables',
-    steps: [
-      {
-        key: 'entregables',
-        label: 'Entregables',
-        hasComment: true,
-        commentLabel: 'Observaciones del entregable',
-      },
-    ],
-  },
-
-  // --------------------------------------------------------------------------
   //  Tipo de contrato
+  //  Las fechas de inicio y fin de cada docente viven en subject_teachers, no aqui.
   // --------------------------------------------------------------------------
   {
     key: 'contrato',
@@ -54,6 +38,22 @@ export const PIPELINE_TEMPLATE: BlockDef[] = [
   },
 
   // --------------------------------------------------------------------------
+  //  Entregables
+  // --------------------------------------------------------------------------
+  {
+    key: 'entregables',
+    label: 'Entregables',
+    steps: [
+      {
+        key: 'entregables',
+        label: 'Entregables',
+        hasComment: true,
+        commentLabel: 'Observaciones del entregable',
+      },
+    ],
+  },
+
+  // --------------------------------------------------------------------------
   //  Libro
   // --------------------------------------------------------------------------
   {
@@ -62,11 +62,18 @@ export const PIPELINE_TEMPLATE: BlockDef[] = [
     steps: [
       { key: 'recepcion_libro', label: 'Recepción de libro', hasComment: false },
       {
+        // Reintentos: si el porcentaje sale muy alto a veces hay que repetir la
+        // prueba. `repeatable` aqui (a nivel de paso, no de bloque) hace que
+        // este paso puntual genere hasta 3 intentos SIN sacar el resto de
+        // "Libro" de su sitio -- todo sigue viviendo en el mismo apartado.
         key: 'reporte_turnitin',
         label: 'Reporte Turnitin',
+        repeatable: { max: 3, itemLabel: 'Reporte Turnitin' },
         hasComment: true,
         commentRequired: true,
-        commentLabel: 'Porcentaje en que salió el reporte',
+        commentLabel: 'Porcentaje de Turnitin',
+        hasSecondComment: true,
+        secondCommentLabel: 'Porcentaje de IA',
       },
       { key: 'envio_ajustes_experto', label: 'Envío para ajustes de experto', hasComment: true },
       { key: 'recepcion_ajustes', label: 'Recepción ajustes', hasComment: true },
@@ -85,6 +92,8 @@ export const PIPELINE_TEMPLATE: BlockDef[] = [
         hasComment: true,
         commentRequired: true,
         commentLabel: 'Porcentaje de Turnitin',
+        hasSecondComment: true,
+        secondCommentLabel: 'Porcentaje de IA',
       },
     ],
   },
@@ -145,14 +154,15 @@ export const PIPELINE_TEMPLATE: BlockDef[] = [
   },
 
   // --------------------------------------------------------------------------
-  //  OVAs — una por credito, maximo 5
+  //  OVAs — una por credito, maximo 5. Extensible: si hace falta, se puede
+  //  agregar otra a mano mas alla de lo que corresponde por creditos.
   // --------------------------------------------------------------------------
   {
     key: 'ovas',
     label: 'OVA',
-    repeatable: { max: 5, perCredit: true, itemLabel: 'OVA' },
+    repeatable: { max: 5, perCredit: true, itemLabel: 'OVA', extensible: true },
     steps: [
-      { key: 'creacion_guion', label: 'Creación de guión', hasComment: false },
+      { key: 'creacion_guion', label: 'Creación de guión', hasComment: false, hasDueDate: true },
       { key: 'paso_diseno_grafico', label: 'Paso a diseño gráfico', hasComment: false },
       { key: 'revision_final', label: 'Revisión final', hasComment: false },
       { key: 'hay_ajustes', label: '¿Hay ajustes?', hasComment: false, isBranchPoint: true },
@@ -173,13 +183,16 @@ export const PIPELINE_TEMPLATE: BlockDef[] = [
   },
 
   // --------------------------------------------------------------------------
-  //  Podcast — sin comentarios en ningun paso
+  //  Podcast — sin comentarios en ningun paso. Siempre arranca en 1 (no
+  //  depende de creditos), pero es extensible: si hace falta otro, se agrega
+  //  a mano hasta el tope de 5, igual que OVA y Video de contenido.
   // --------------------------------------------------------------------------
   {
     key: 'podcast',
     label: 'Podcast',
+    repeatable: { max: 5, perCredit: false, itemLabel: 'Podcast', extensible: true },
     steps: [
-      { key: 'creacion_guion', label: 'Creación de guión', hasComment: false },
+      { key: 'creacion_guion', label: 'Creación de guión', hasComment: false, hasDueDate: true },
       { key: 'revision_guion', label: 'Revisión de guión', hasComment: false },
       { key: 'grabacion_podcast', label: 'Grabación de podcast', hasComment: false },
       { key: 'revision_final', label: 'Revisión final', hasComment: false },
@@ -230,14 +243,16 @@ export const PIPELINE_TEMPLATE: BlockDef[] = [
 
   // --------------------------------------------------------------------------
   //  Videos de contenido — uno por credito, maximo 5.
-  //  Misma estructura que el video de bienvenida.
+  //  Misma estructura que el video de bienvenida. Extensible: ademas de los
+  //  que salen por creditos, se puede agregar otro a mano (por si hace
+  //  falta) hasta llegar al tope de 5 -- ver BlockDef.repeatable.extensible.
   // --------------------------------------------------------------------------
   {
     key: 'video_contenido',
     label: 'Video de contenido',
-    repeatable: { max: 5, perCredit: true, itemLabel: 'Video de contenido' },
+    repeatable: { max: 5, perCredit: true, itemLabel: 'Video de contenido', extensible: true },
     steps: [
-      { key: 'creacion_guion', label: 'Creación de guión', hasComment: false },
+      { key: 'creacion_guion', label: 'Creación de guión', hasComment: false, hasDueDate: true },
       { key: 'solicitud_audios', label: 'Solicitud de audios', hasComment: false },
       { key: 'paso_desarrollo', label: 'Paso a desarrollo', hasComment: false },
       { key: 'revision_final', label: 'Revisión final', hasComment: false },
@@ -307,7 +322,7 @@ export const PIPELINE_TEMPLATE: BlockDef[] = [
     label: 'Guía',
     repeatable: { max: 5, perCredit: true, itemLabel: 'Guía' },
     steps: [
-      { key: 'recepcion_experto', label: 'Recepción por experto', hasComment: false },
+      { key: 'recepcion_experto', label: 'Recepción por experto', hasComment: false, hasDueDate: true },
       { key: 'paso_diseno_grafico', label: 'Paso a diseño gráfico', hasComment: false },
       { key: 'hay_ajustes', label: '¿Hay ajustes?', hasComment: false, isBranchPoint: true },
       {
@@ -417,9 +432,15 @@ export const PIPELINE_TEMPLATE: BlockDef[] = [
 //  FUNCIONES DE APOYO
 // ============================================================================
 
-/** Cuantas instancias genera un bloque para una asignatura de N creditos */
+/**
+ * Cuantas instancias GARANTIZA un bloque para una asignatura de N creditos
+ * (las que se ven siempre, sin agregar nada a mano).
+ */
 export function computeRepeatCount(block: BlockDef, credits: number): number {
   if (!block.repeatable) return 1;
+  // Extensible + no depende de creditos (p. ej. Podcast): arranca en 1 nomas
+  // -- el resto, hasta el tope, se agrega a mano bajo demanda.
+  if (block.repeatable.extensible && !block.repeatable.perCredit) return 1;
   if (!block.repeatable.perCredit) return block.repeatable.max;
   return Math.max(1, Math.min(block.repeatable.max, credits));
 }
@@ -432,23 +453,92 @@ export function buildStepPaths(credits: number): ResolvedStep[] {
   const resultado: ResolvedStep[] = [];
 
   for (const block of PIPELINE_TEMPLATE) {
-    const veces = computeRepeatCount(block, credits);
+    const garantizadas = computeRepeatCount(block, credits);
+    // Un bloque extensible genera de una vez todas sus instancias posibles
+    // (hasta el tope), no solo las que corresponden por creditos -- las de
+    // mas alla quedan marcadas garantizada:false y las oculta/cuenta aparte
+    // instanciasExtraEnUso / gruposVisibles, segun tengan datos o no.
+    const veces = block.repeatable?.extensible ? block.repeatable.max : garantizadas;
 
     for (let i = 1; i <= veces; i++) {
-      const instance = block.repeatable ? i : null;
-      const blockLabel = instance ? `${block.repeatable!.itemLabel} ${i}` : block.label;
+      const blockInstance = block.repeatable ? i : null;
+      const blockLabel = blockInstance ? `${block.repeatable!.itemLabel} ${i}` : block.label;
+      const garantizada = blockInstance === null || i <= garantizadas;
 
       for (const step of block.steps) {
-        const path = instance
-          ? `${block.key}.${instance}.${step.key}`
-          : `${block.key}.${step.key}`;
+        if (step.repeatable) {
+          // Paso repetible DENTRO de su bloque (p. ej. reintentos de Turnitin
+          // en "Libro"): el resto de los pasos del bloque quedan fijos, solo
+          // este genera varias instancias -- usa el mismo formato de path
+          // que un bloque repetible ("bloque.instancia.paso"). Es un
+          // mecanismo aparte del de bloque extensible, por eso garantizada
+          // siempre true aqui -- pasosVisibles lo filtra por su cuenta.
+          for (let si = 1; si <= step.repeatable.max; si++) {
+            const path = `${block.key}.${si}.${step.key}`;
+            resultado.push({ path, blockKey: block.key, blockLabel, instance: si, garantizada: true, step });
+          }
+        } else {
+          const path = blockInstance
+            ? `${block.key}.${blockInstance}.${step.key}`
+            : `${block.key}.${step.key}`;
 
-        resultado.push({ path, blockKey: block.key, blockLabel, instance, step });
+          resultado.push({ path, blockKey: block.key, blockLabel, instance: blockInstance, garantizada, step });
+        }
       }
     }
   }
 
   return resultado;
+}
+
+/**
+ * De las instancias "extra" de bloques extensibles (mas alla de lo que
+ * corresponde por creditos), cuales ya tienen al menos un dato guardado --
+ * esas son las que se quedan contando/visibles aunque no vengan garantizadas.
+ * Devuelve claves "bloque.instancia".
+ */
+export function instanciasExtraEnUso(
+  pasos: ResolvedStep[],
+  celdas: Record<string, Pick<MatrixCell, 'branch_value'>>
+): Set<string> {
+  const enUso = new Set<string>();
+  for (const p of pasos) {
+    if (p.instance !== null && !p.garantizada && celdas[p.path]) {
+      enUso.add(`${p.blockKey}.${p.instance}`);
+    }
+  }
+  return enUso;
+}
+
+/**
+ * Saca del todo las instancias "extra" de un bloque extensible que todavia
+ * no se usan. A diferencia de pasosVisibles (que decide que PASOS se ven
+ * dentro de una instancia ya elegida -- y por eso no debe tocar esto, o una
+ * instancia recien agregada y sin guardar se quedaría sin ningún paso que
+ * mostrar), esta decide que INSTANCIAS completas cuentan. La usa el backend
+ * para el avance/total agregado, y el frontend (ver gruposVisibles en
+ * lib/bloques) para armar la lista de apartados visibles.
+ */
+export function excluirInstanciasExtraSinUsar(
+  pasos: ResolvedStep[],
+  celdas: Record<string, Pick<MatrixCell, 'branch_value'>>
+): ResolvedStep[] {
+  const enUso = instanciasExtraEnUso(pasos, celdas);
+  return pasos.filter(
+    (p) => p.instance === null || p.garantizada || enUso.has(`${p.blockKey}.${p.instance}`)
+  );
+}
+
+/**
+ * Etiqueta a mostrar para un paso ya resuelto. Si el paso se repite dentro de
+ * su bloque (ver StepDef.repeatable), le agrega el número de intento --
+ * "Reporte Turnitin 2" -- para poder distinguirlos en la misma vista. El
+ * `instance` de un bloque repetible (OVA, Guía...) no aplica aquí: ese ya se
+ * ve reflejado en el título del apartado ("OVA 2"), no hace falta repetirlo
+ * en cada paso suyo.
+ */
+export function etiquetaPaso(step: StepDef, instance: number | null): string {
+  return step.repeatable && instance ? `${step.label} ${instance}` : step.label;
 }
 
 /** Descompone un step_path en sus partes */
@@ -485,7 +575,21 @@ export function isValidStepPath(path: string, credits: number): boolean {
   if (!found) return false;
 
   const { instance } = parseStepPath(path);
-  const esperado = computeRepeatCount(found.block, credits);
+
+  // Paso repetible dentro de su bloque (p. ej. reintentos de Turnitin): la
+  // instancia siempre es obligatoria y su rango sale del propio paso, no del
+  // bloque -- el bloque en si no es repetible.
+  if (found.step.repeatable) {
+    if (instance === null) return false;
+    return instance >= 1 && instance <= found.step.repeatable.max;
+  }
+
+  // Un bloque extensible (ver BlockDef.repeatable.extensible) admite
+  // instancias mas alla de lo que corresponde por creditos, hasta su tope
+  // -- las de mas alla las controla instanciasExtraEnUso, no esta validacion.
+  const esperado = found.block.repeatable?.extensible
+    ? found.block.repeatable.max
+    : computeRepeatCount(found.block, credits);
 
   // Un bloque no repetible no admite instancia, y viceversa
   if (found.block.repeatable && instance === null) return false;
@@ -503,22 +607,34 @@ export function totalSteps(credits: number): number {
 
 /**
  * Oculta los pasos condicionales cuya decision previa no coincide (p. ej.
- * "Solicitud de ajustes" cuando ya se respondio "No hay ajustes"). Es la
- * unica fuente de verdad de que pasos aplican realmente -- la usan tanto
- * el frontend (para no mostrarlos) como el backend (para no contarlos en
- * el avance ni en el color agregado del tablero).
+ * "Solicitud de ajustes" cuando ya se respondio "No hay ajustes") y, para un
+ * paso repetible dentro de su bloque (p. ej. los reintentos de Turnitin en
+ * "Libro"), los intentos siguientes al primero mientras NO tengan su propio
+ * dato guardado -- asi no se ven de entrada los 3 cupos, solo el primero (mas
+ * el botón "agregar otro" del frontend, que abre el panel de un intento
+ * todavia sin guardar). OJO: la condicion es que el intento MISMO tenga
+ * celda, no el anterior -- si fuera "el anterior ya tiene celda" el cupo
+ * siguiente se revelaria solo (y quedaria contando para siempre) apenas se
+ * guarde el intento previo, aunque nadie lo vaya a usar. Es la unica fuente
+ * de verdad de que pasos aplican realmente -- la usan tanto el frontend
+ * (para no mostrarlos) como el backend (para no contarlos en el avance ni en
+ * el color agregado del tablero).
  */
 export function pasosVisibles(
   pasos: ResolvedStep[],
   celdas: Record<string, Pick<MatrixCell, 'branch_value'>>
 ): ResolvedStep[] {
   return pasos.filter((p) => {
-    if (!p.step.branchOnlyIf) return true;
+    if (p.step.branchOnlyIf) {
+      const base = p.instance
+        ? `${p.blockKey}.${p.instance}.${p.step.branchOnlyIf.stepKey}`
+        : `${p.blockKey}.${p.step.branchOnlyIf.stepKey}`;
 
-    const base = p.instance
-      ? `${p.blockKey}.${p.instance}.${p.step.branchOnlyIf.stepKey}`
-      : `${p.blockKey}.${p.step.branchOnlyIf.stepKey}`;
+      if (celdas[base]?.branch_value !== p.step.branchOnlyIf.equals) return false;
+    }
 
-    return celdas[base]?.branch_value === p.step.branchOnlyIf.equals;
+    if (p.step.repeatable && p.instance && p.instance > 1 && !celdas[p.path]) return false;
+
+    return true;
   });
 }

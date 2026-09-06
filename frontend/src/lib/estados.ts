@@ -8,7 +8,7 @@ export const ESTADOS: Record<CellStatus, {
   borde: boolean;
 }> = {
   vacio:            { label: 'Sin iniciar',      fondo: '#F1F0EC', texto: '#8A8578', textoSuave: '#A5A198', borde: false },
-  pendiente_equipo: { label: 'Pendiente equipo', fondo: '#FFFFFF', texto: '#C0392B', textoSuave: '#6B6862', borde: true  },
+  pendiente_equipo: { label: 'En proceso',       fondo: '#FFFFFF', texto: '#C0392B', textoSuave: '#6B6862', borde: true  },
   pendiente_jefe:   { label: 'Pendiente jefe',   fondo: '#F5D061', texto: '#A32D2D', textoSuave: '#6B5A22', borde: false },
   ajustes:          { label: 'En ajustes',       fondo: '#F5D061', texto: '#1F1B16', textoSuave: '#6B5A22', borde: false },
   por_revisar:      { label: 'Por revisar',      fondo: '#FFFFFF', texto: '#1F1B16', textoSuave: '#6B6862', borde: true  },

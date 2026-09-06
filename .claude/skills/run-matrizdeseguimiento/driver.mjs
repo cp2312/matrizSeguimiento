@@ -61,7 +61,7 @@ async function ensurePage() {
     headless: true,
     args: ['--no-sandbox'],
   });
-  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const context = await browser.newContext({ viewport: { width: Number(process.env.VIEWPORT_W) || 1280, height: Number(process.env.VIEWPORT_H) || 900 } });
   page = await context.newPage();
   page.on('console', (msg) => consoleLog.push(`[${msg.type()}] ${msg.text()}`));
   page.on('pageerror', (err) => consoleLog.push(`[pageerror] ${err.message}`));

@@ -134,7 +134,9 @@ function EncargadosPorCategoria({ usuarios }: { usuarios: UsuarioFila[] }) {
     <div className="bg-white border border-slate-200 rounded-xl p-4 mt-5">
       <p className="text-sm font-medium text-slate-800">Encargados por categoría</p>
       <p className="text-xs text-slate-500 mt-0.5 mb-3">
-        Reciben un correo apenas un paso de su categoría queda en "Pendiente equipo" o "Pendiente jefe".
+        Tipo de contrato, Podcast, Cuestionario final y Guías avisan a su encargado cuando uno de
+        sus pasos queda "En proceso". "Jefe" es distinto: avisa de cualquier paso, de
+        cualquier apartado, que quede "Pendiente jefe".
       </p>
 
       {error && <Alerta>{error}</Alerta>}

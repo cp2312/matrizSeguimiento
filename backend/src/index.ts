@@ -11,6 +11,8 @@ import { programsRouter } from './routes/programs.js';
 import { subjectsRouter } from './routes/subjects.js';
 import { buildMatrixRouter } from './routes/matrix.js';
 import { encargadosRouter } from './routes/encargados.js';
+import { revisarContratosPorVencer } from './lib/contractWarnings.js';
+import { revisarFechasLimite } from './lib/dueDateWarnings.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -69,6 +71,17 @@ io.on('connection', (socket) => {
   socket.on('subject:join', (id: number) => socket.join(`subject:${id}`));
   socket.on('subject:leave', (id: number) => socket.leave(`subject:${id}`));
 });
+
+// Revisa contratos y fechas límite por vencer una vez al arrancar (para no
+// esperar un día entero en un despliegue nuevo) y despues cada 24h. Es un
+// solo proceso siempre corriendo -- no hace falta un runner de cron aparte.
+const UN_DIA_MS = 24 * 60 * 60 * 1000;
+void revisarContratosPorVencer();
+void revisarFechasLimite();
+setInterval(() => {
+  void revisarContratosPorVencer();
+  void revisarFechasLimite();
+}, UN_DIA_MS);
 
 httpServer.listen(PORT, () => {
   console.log(`API escuchando en http://localhost:${PORT}`);

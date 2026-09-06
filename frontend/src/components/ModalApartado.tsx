@@ -3,7 +3,7 @@ import { Modal } from './ui/Modal';
 import { BloqueProceso } from './BloqueProceso';
 import { PanelCelda } from './PanelCelda';
 import { ItemApartado } from './ItemApartado';
-import { pasosVisibles } from '../lib/bloques';
+import { pasosVisibles, separarGruposVisibles } from '../lib/bloques';
 import type { GrupoPasos } from '../lib/bloques';
 import type { MatrixCell, SubjectTeacher } from '@shared/types';
 
@@ -24,11 +24,35 @@ interface Props {
   bloqueLabel?: string;
   /** los datos de la asignatura todavía se están cargando (entrada directa desde el tablero) */
   cargando?: boolean;
+  /** los videos de esta asignatura los graba el profesor (renombra el bloque a "Video tutorial") */
+  videoPorDocente?: boolean;
+  onCambiarVideoPorDocente?: (checked: boolean) => void;
   onGuardado: (celda: MatrixCell) => void;
+  onTeachersChanged: (teachers: SubjectTeacher[]) => void;
   onCerrar: () => void;
+  onRecargar?: () => void;
 }
 
+// Solo "Video de contenido" ofrece el checkbox de "lo graba el profesor" --
+// "Video de bienvenida" mantiene siempre su nombre y su checklist normal.
+const BLOQUES_VIDEO = new Set(['video_contenido']);
+
 type Vista = 'detalle' | 'instancias' | 'todos';
+
+/** Tarjeta punteada para agregar una instancia extra de un bloque extensible (p. ej. otro video) */
+function TileAgregar({ etiqueta, onClick }: { etiqueta: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex items-center gap-2.5 px-3.5 h-11 rounded-lg border border-dashed border-slate-300
+                 text-slate-400 text-[13px] text-left transition-colors
+                 hover:border-slate-400 hover:text-slate-600 hover:bg-slate-50"
+    >
+      + Agregar {etiqueta}
+    </button>
+  );
+}
 
 /**
  * Ventana flotante de un apartado. Un botón "Ver todos" cambia, dentro de la
@@ -37,19 +61,35 @@ type Vista = 'detalle' | 'instancias' | 'todos';
  */
 export function ModalApartado({
   abierto, subjectId, grupos, celdas, teachers,
-  apartadoInicial, bloqueInicial, bloqueLabel, cargando = false, onGuardado, onCerrar,
+  apartadoInicial, bloqueInicial, bloqueLabel, cargando = false,
+  videoPorDocente = false, onCambiarVideoPorDocente, onGuardado, onTeachersChanged, onCerrar, onRecargar,
 }: Props) {
-  const entradas = Object.entries(grupos);
+  // Un bloque extensible (OVA, Podcast, Video de contenido) puede tener
+  // instancias extra ocultas hasta que se agregan a mano -- no se listan acá.
+  const { visibles, siguientesExtra } = separarGruposVisibles(grupos, celdas);
+  const entradas = Object.entries(visibles);
 
   const instanciasBloque = bloqueInicial
     ? entradas.filter(([clave]) => clave === bloqueInicial || clave.startsWith(`${bloqueInicial}.`))
     : [];
+  const siguienteExtraDelBloque = bloqueInicial
+    ? siguientesExtra.find((s) => s.clave === bloqueInicial || s.clave.startsWith(`${bloqueInicial}.`))
+    : undefined;
 
   // El modal se puede montar antes de que terminen de cargar los datos (entrada
   // directa desde el tablero), así que no basta con leer las props una sola vez:
   // mientras no se elija nada a mano, siguen su valor más reciente.
-  const apartadoPorDefecto = apartadoInicial ?? (instanciasBloque.length === 1 ? instanciasBloque[0][0] : null);
-  const vistaPorDefecto: Vista = !apartadoInicial && instanciasBloque.length > 1 ? 'instancias' : 'detalle';
+  //
+  // Si el bloque tiene más de una opción -- ya sea porque hay varias
+  // instancias visibles, o porque hay una extra que se podría agregar --
+  // se muestra siempre el selector de tarjetas (vista "instancias"), aunque
+  // por ahora solo exista una real. Así "Podcast" (1 credito, siempre
+  // arranca en 1) se ve igual que "OVA" con varios creditos, en vez de
+  // saltar derecho al detalle solo porque hoy hay una sola tarjeta.
+  const hayOpcionesDelBloque = instanciasBloque.length > 1 || !!siguienteExtraDelBloque;
+  const apartadoPorDefecto = apartadoInicial ??
+    (!hayOpcionesDelBloque && instanciasBloque.length === 1 ? instanciasBloque[0][0] : null);
+  const vistaPorDefecto: Vista = !apartadoInicial && hayOpcionesDelBloque ? 'instancias' : 'detalle';
 
   const [apartadoManual, setApartadoManual] = useState<string | null>(null);
   const [vistaManual, setVistaManual] = useState<Vista | null>(null);
@@ -67,8 +107,11 @@ export function ModalApartado({
   const grupoActivo = apartado ? grupos[apartado] : null;
   const visiblesActivo = grupoActivo ? pasosVisibles(grupoActivo.pasos, celdas) : [];
   const terminadosActivo = visiblesActivo.filter((p) => celdas[p.path]?.status === 'terminado').length;
+  // OJO: busca en grupoActivo.pasos (todos), no en visiblesActivo (filtrados) --
+  // "Agregar otro reporte" selecciona un intento que todavía no tiene celda
+  // guardada, así que pasosVisibles aún no lo deja ver como chip.
   const pasoActivo = pasoSeleccionado
-    ? visiblesActivo.find((p) => p.path === pasoSeleccionado) ?? null
+    ? grupoActivo?.pasos.find((p) => p.path === pasoSeleccionado) ?? null
     : null;
 
   const titulo = cargando
@@ -107,6 +150,9 @@ export function ModalApartado({
               onClick={() => elegir(clave)}
             />
           ))}
+          {siguientesExtra.map((s) => (
+            <TileAgregar key={s.clave} etiqueta={s.etiqueta} onClick={() => elegir(s.clave)} />
+          ))}
         </div>
       ) : vista === 'instancias' ? (
         <div className="grid sm:grid-cols-2 gap-2">
@@ -120,10 +166,28 @@ export function ModalApartado({
               onClick={() => elegir(clave)}
             />
           ))}
+          {siguienteExtraDelBloque && (
+            <TileAgregar
+              etiqueta={siguienteExtraDelBloque.etiqueta}
+              onClick={() => elegir(siguienteExtraDelBloque.clave)}
+            />
+          )}
         </div>
       ) : grupoActivo && (
         <div className="flex gap-4 items-start">
           <div className="flex-1 min-w-0">
+            {BLOQUES_VIDEO.has(grupoActivo.pasos[0]?.blockKey) && onCambiarVideoPorDocente && (
+              <label className="flex items-center gap-2 mb-3 text-[12px] text-slate-600 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={videoPorDocente}
+                  onChange={(e) => onCambiarVideoPorDocente(e.target.checked)}
+                  className="w-3.5 h-3.5 accent-slate-800"
+                />
+                Lo graba el profesor (se muestra como "Video tutorial")
+              </label>
+            )}
+
             <BloqueProceso
               titulo={grupoActivo.titulo}
               pasos={grupoActivo.pasos}
@@ -142,7 +206,9 @@ export function ModalApartado({
                 celda={celdas[pasoActivo.path]}
                 teachers={teachers}
                 onGuardado={onGuardado}
+                onTeachersChanged={onTeachersChanged}
                 onCerrar={() => setPasoSeleccionado(null)}
+                onRecargar={onRecargar}
               />
             </div>
           )}

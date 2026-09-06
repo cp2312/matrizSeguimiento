@@ -3,33 +3,38 @@ import type { Server as SocketIOServer } from 'socket.io';
 import { query, queryOne } from '../db/pool.js';
 import { enviarAvisoPendiente } from '../lib/mailer.js';
 import {
-  buildStepPaths, isValidStepPath, findStepDef, totalSteps, pasosVisibles,
+  buildStepPaths, isValidStepPath, findStepDef, totalSteps, pasosVisibles, parseStepPath, etiquetaPaso,
+  excluirInstanciasExtraSinUsar,
 } from '../../../shared/pipelineTemplate.js';
-import { CATEGORIAS_ENCARGADO } from '../../../shared/types.js';
-import type { CategoriaEncargado, MatrixCell, Subject, SubjectTeacher } from '../../../shared/types.js';
+import type { MatrixCell, Subject, SubjectTeacher } from '../../../shared/types.js';
 
-// Estados que cuentan como "pendiente" para el aviso por correo
-const ESTADOS_PENDIENTE = new Set(['pendiente_equipo', 'pendiente_jefe']);
+// Los 4 apartados del proceso con encargado propio (aparte de "jefe", que no es un apartado)
+const CATEGORIAS_POR_BLOQUE = new Set(['contrato', 'podcast', 'cuestionario_final', 'guias']);
 
 /**
- * Si el paso pertenece a una de las categorías monitoreadas y su estado
- * acaba de pasar A pendiente (no si ya lo estaba), avisa por correo al
- * encargado de esa categoría, con un link directo al apartado. Nunca
- * lanza: un correo que falla no debe tumbar el guardado de la celda.
+ * "Pendiente jefe" avisa siempre a la jefe (categoría especial "jefe"), sin
+ * importar en qué apartado haya pasado -- ese estado ya significa "necesita
+ * a la jefe" en cualquier parte de la asignatura. "Pendiente equipo" solo
+ * avisa cuando el paso es de uno de los 4 apartados con encargado propio.
+ * En ambos casos, solo si el estado ACABA de pasar a pendiente (no si ya
+ * lo estaba). Nunca lanza: un correo que falla no debe tumbar el guardado.
  */
 async function avisarSiQuedaPendiente(
-  blockKey: string, estadoAnterior: string | undefined, celda: MatrixCell, asignaturaNombre: string, pasoLabel: string
+  blockKey: string, blockLabel: string, estadoAnterior: string | undefined,
+  celda: MatrixCell, asignaturaNombre: string, pasoLabel: string
 ): Promise<void> {
-  if (!(blockKey in CATEGORIAS_ENCARGADO)) return;
   if (celda.status !== 'pendiente_equipo' && celda.status !== 'pendiente_jefe') return;
-  if (!ESTADOS_PENDIENTE.has(celda.status) || celda.status === estadoAnterior) return;
+  if (celda.status === estadoAnterior) return;
+
+  const categoriaEncargado = celda.status === 'pendiente_jefe' ? 'jefe' : blockKey;
+  if (celda.status === 'pendiente_equipo' && !CATEGORIAS_POR_BLOQUE.has(blockKey)) return;
 
   try {
     const encargado = await queryOne<{ full_name: string; email: string }>(
       `SELECT u.full_name, u.email FROM category_owners co
        JOIN users u ON u.id = co.user_id
        WHERE co.category = $1 AND u.active`,
-      [blockKey]
+      [categoriaEncargado]
     );
     if (!encargado) return;
 
@@ -41,7 +46,7 @@ async function avisarSiQuedaPendiente(
       paraEmail: encargado.email,
       paraNombre: encargado.full_name,
       asignatura: asignaturaNombre,
-      categoria: CATEGORIAS_ENCARGADO[blockKey as CategoriaEncargado],
+      categoria: blockLabel,
       paso: pasoLabel,
       estado: celda.status,
       subjectId: celda.subject_id,
@@ -78,7 +83,9 @@ export function buildMatrixRouter(io: SocketIOServer) {
 
     // Los pasos condicionales que ya se descartaron (p. ej. "No hay ajustes") no
     // cuentan para el avance -- si no, nunca se llega al 100% aunque esté todo hecho.
-    const visibles = pasosVisibles(pasos, celdas);
+    // Tampoco cuentan las instancias extra de un bloque extensible (p. ej. un
+    // segundo "Video de contenido") mientras no se hayan agregado a mano.
+    const visibles = pasosVisibles(excluirInstanciasExtraSinUsar(pasos, celdas), celdas);
     const terminados = visibles.filter((p) => celdas[p.path]?.status === 'terminado').length;
 
     res.json({
@@ -111,12 +118,19 @@ router.patch('/subjects/:subjectId/matrix/*stepPath', async (req, res) => {
     }
 
     const def = findStepDef(stepPath)!;
-    const { status, doneDate, comment, branchValue } = req.body;
+    const { status, doneDate, comment, secondComment, branchValue, dueDate, version } = req.body;
 
     // Comentario obligatorio
     if (def.step.commentRequired && status === 'terminado' && !comment?.trim()) {
       return res.status(400).json({
         error: `"${def.step.label}" requiere ${def.step.commentLabel ?? 'un comentario'}`,
+      });
+    }
+
+    // Segundo comentario obligatorio (p. ej. porcentaje de IA)
+    if (def.step.secondCommentRequired && status === 'terminado' && !secondComment?.trim()) {
+      return res.status(400).json({
+        error: `"${def.step.label}" requiere ${def.step.secondCommentLabel ?? 'un segundo comentario'}`,
       });
     }
 
@@ -134,25 +148,49 @@ router.patch('/subjects/:subjectId/matrix/*stepPath', async (req, res) => {
       [subjectId, stepPath]
     );
 
+    // Optimistic locking: si el cliente envía una versión, verificar que coincida
+    if (version !== undefined && version !== null) {
+      const actual = await queryOne<{ version: number }>(
+        'SELECT version FROM matrix_cells WHERE subject_id = $1 AND step_path = $2',
+        [subjectId, stepPath]
+      );
+      if (actual && actual.version !== version) {
+        return res.status(409).json({
+          error: 'Otro usuario modificó esta celda. Recarga para ver los cambios actuales.',
+          currentVersion: actual.version,
+        });
+      }
+    }
+
     try {
       const celda = await queryOne<MatrixCell>(
         `INSERT INTO matrix_cells
-           (subject_id, step_path, status, done_date, initials, comment, branch_value, updated_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+           (subject_id, step_path, status, done_date, initials, comment, second_comment, branch_value, due_date, updated_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
          ON CONFLICT (subject_id, step_path)
          DO UPDATE SET
-           status       = EXCLUDED.status,
-           done_date    = EXCLUDED.done_date,
-           initials     = EXCLUDED.initials,
-           comment      = EXCLUDED.comment,
-           branch_value = EXCLUDED.branch_value,
-           updated_by   = EXCLUDED.updated_by
+           status         = EXCLUDED.status,
+           done_date      = EXCLUDED.done_date,
+           initials       = EXCLUDED.initials,
+           comment        = EXCLUDED.comment,
+           second_comment = EXCLUDED.second_comment,
+           branch_value   = EXCLUDED.branch_value,
+           due_date       = EXCLUDED.due_date,
+           -- Si la fecha límite cambió, se rehabilita el aviso de "por
+           -- vencer" para la nueva fecha (si no, correrla hacia adelante
+           -- nunca volvería a avisar).
+           due_date_warning_sent_at =
+             CASE WHEN matrix_cells.due_date IS DISTINCT FROM EXCLUDED.due_date
+                  THEN NULL ELSE matrix_cells.due_date_warning_sent_at END,
+           version        = matrix_cells.version + 1,
+           updated_by     = EXCLUDED.updated_by
          RETURNING *`,
         [
           subjectId, stepPath, status ?? 'vacio',
           doneDate ?? null, usuario.initials,
-          comment ?? null,
+          comment ?? null, secondComment ?? null,
           def.step.isBranchPoint ? branchValue ?? null : null,
+          def.step.hasDueDate ? dueDate ?? null : null,
           usuario.id,
         ]
       );
@@ -163,7 +201,10 @@ router.patch('/subjects/:subjectId/matrix/*stepPath', async (req, res) => {
       io.to(`subject:${subjectId}`).emit('cell:updated', celda);
 
       // Aviso por correo: no se espera a que termine para responder al cliente
-      void avisarSiQuedaPendiente(def.block.key, celdaPrevia?.status, celda, asignatura.name, def.step.label);
+      const { instance } = parseStepPath(stepPath);
+      void avisarSiQuedaPendiente(
+        def.block.key, def.block.label, celdaPrevia?.status, celda, asignatura.name, etiquetaPaso(def.step, instance)
+      );
 
       res.json(celda);
     } catch (err: any) {
@@ -222,7 +263,10 @@ router.get('/programs/:id/tablero', async (req, res) => {
 
     // Los pasos condicionales ya descartados (p. ej. "No hay ajustes") ni cuentan
     // ni pintan de blanco un bloque que en realidad ya está completo del todo.
-    const pasos = pasosVisibles(buildStepPaths(a.credits), celdasDeAsignatura);
+    // Tampoco cuentan las instancias extra de un bloque extensible mientras no
+    // se hayan agregado a mano -- si no, un "Video de contenido" ya terminado
+    // se pintaría como "En proceso" solo por los cupos extra sin tocar.
+    const pasos = pasosVisibles(excluirInstanciasExtraSinUsar(buildStepPaths(a.credits), celdasDeAsignatura), celdasDeAsignatura);
 
     const estados: Record<string, string[]> = {};
     for (const p of pasos) {

@@ -7,14 +7,14 @@ import type { ProgramType } from '@shared/types';
  * mitad virtual, porque eso es literalmente lo que significa.
  */
 export const TIPOS_PROGRAMA: Record<Exclude<ProgramType, 'hibrido'>, { label: string; color: string }> = {
-  presencial: { label: 'Presencial', color: '#94A3B8' }, // slate-400
-  virtual:    { label: 'Virtual',    color: '#06B6D4' }, // marca-500
+  presencial: { label: 'Presencial con asignatura virtual', color: '#94A3B8' }, // slate-400
+  virtual:    { label: 'Virtual',                            color: '#06B6D4' }, // marca-500
 };
 
 export const ORDEN_TIPOS: ProgramType[] = ['presencial', 'virtual', 'hibrido'];
 
 export const ETIQUETA_TIPO: Record<ProgramType, string> = {
-  presencial: 'Presencial',
+  presencial: 'Presencial con asignatura virtual',
   virtual: 'Virtual',
   hibrido: 'Híbrido',
 };

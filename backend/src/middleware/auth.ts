@@ -22,12 +22,14 @@ declare global {
   }
 }
 
-export function firmarToken(usuario: AuthUser): string {
-  return jwt.sign(
+export function firmarToken(usuario: AuthUser): { token: string; expiresIn: number } {
+  const expiresIn = 3600; // 1 hora
+  const token = jwt.sign(
     { sub: usuario.id, initials: usuario.initials, role: usuario.role },
     JWT_SECRET!,
-    { expiresIn: (process.env.JWT_EXPIRES_IN ?? '8h') as jwt.SignOptions['expiresIn'] }
+    { expiresIn }
   );
+  return { token, expiresIn };
 }
 
 

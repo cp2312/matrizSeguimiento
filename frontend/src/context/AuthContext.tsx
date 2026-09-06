@@ -32,8 +32,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   async function login(email: string, password: string) {
-    const res = await api.post<{ token: string; usuario: Usuario }>('/auth/login', { email, password });
+    const res = await api.post<{ token: string; expiresIn: number; usuario: Usuario }>(
+      '/auth/login', { email, password }
+    );
     token.set(res.token);
+    token.setExpiry(res.expiresIn);
     setUsuario(res.usuario);
   }
 

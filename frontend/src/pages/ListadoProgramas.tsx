@@ -12,6 +12,7 @@ import { Alerta } from '../components/ui/Alerta';
 import { TituloPagina } from '../components/ui/TituloPagina';
 import { Cargando, Vacio } from '../components/ui/Estado';
 import { TIPOS_PROGRAMA, ORDEN_TIPOS, ETIQUETA_TIPO } from '../lib/tiposPrograma';
+import { normalizar } from '../lib/texto';
 import type { Program, ProgramType } from '@shared/types';
 
 type Filtro = 'todos' | ProgramType;
@@ -65,6 +66,16 @@ function IconoBasura() {
   );
 }
 
+function IconoLupa({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="7" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+    </svg>
+  );
+}
+
 /** Chevron que aparece junto al nombre para marcar que la fila lleva a la matriz */
 function IconoFlecha() {
   return (
@@ -84,10 +95,13 @@ export default function ListadoProgramas() {
   const [editando, setEditando] = useState<Program | null>(null);
   const [eliminando, setEliminando] = useState<Program | null>(null);
   const [filtro, setFiltro] = useState<Filtro>('todos');
+  const [busqueda, setBusqueda] = useState('');
 
   const navigate = useNavigate();
   const activos = programas?.filter((p) => !p.archived).length ?? 0;
-  const visibles = (programas ?? []).filter((p) => filtro === 'todos' || p.type === filtro);
+  const visibles = (programas ?? []).filter(
+    (p) => (filtro === 'todos' || p.type === filtro) && normalizar(p.name).includes(normalizar(busqueda))
+  );
 
   return (
     <Layout>
@@ -113,19 +127,35 @@ export default function ListadoProgramas() {
 
       {!cargando && programas && programas.length > 0 && (
         <>
-          <div className="flex items-center gap-1 mb-4">
-            <FiltroPildora activo={filtro === 'todos'} onClick={() => setFiltro('todos')}>
-              Todos
-            </FiltroPildora>
-            {ORDEN_TIPOS.map((t) => (
-              <FiltroPildora key={t} activo={filtro === t} onClick={() => setFiltro(t)}>
-                <TipoSwatch tipo={t} />
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <div className="flex items-center gap-1">
+              <FiltroPildora activo={filtro === 'todos'} onClick={() => setFiltro('todos')}>
+                Todos
               </FiltroPildora>
-            ))}
+              {ORDEN_TIPOS.map((t) => (
+                <FiltroPildora key={t} activo={filtro === t} onClick={() => setFiltro(t)}>
+                  <TipoSwatch tipo={t} />
+                </FiltroPildora>
+              ))}
+            </div>
+
+            <div className="relative w-full max-w-xs">
+              <IconoLupa className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+              <input
+                type="text"
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                placeholder="Buscar programa…"
+                className="w-full h-9 pl-9 pr-3 rounded-lg border border-slate-200 bg-white text-[13px]
+                           outline-none transition-colors focus:ring-2 focus:ring-slate-400"
+              />
+            </div>
           </div>
 
           {visibles.length === 0 ? (
-            <Vacio mensaje="Ningún programa coincide con este filtro." />
+            <Vacio mensaje={
+              busqueda ? `Ningún programa coincide con "${busqueda}".` : 'Ningún programa coincide con este filtro.'
+            } />
           ) : (
             <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-x-auto">
               <table className="w-full text-sm">

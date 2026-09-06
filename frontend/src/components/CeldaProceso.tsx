@@ -3,12 +3,16 @@ import type { MatrixCell, StepDef } from '@shared/types';
 
 interface Props {
   paso: StepDef;
+  /** nombre a mostrar -- por defecto paso.label, pero el llamador puede pasar
+   *  uno con el número de intento (ver etiquetaPaso) cuando el paso se repite
+   *  dentro de su bloque */
+  etiqueta?: string;
   celda?: MatrixCell;
   seleccionada: boolean;
   onClick: () => void;
 }
 
-export function CeldaProceso({ paso, celda, seleccionada, onClick }: Props) {
+export function CeldaProceso({ paso, etiqueta, celda, seleccionada, onClick }: Props) {
   const estado = celda?.status ?? 'vacio';
   const e = ESTADOS[estado];
 
@@ -41,7 +45,7 @@ export function CeldaProceso({ paso, celda, seleccionada, onClick }: Props) {
           fontWeight: REQUIERE_ACCION.includes(estado) ? 500 : 400,
         }}
       >
-        {paso.label}
+        {etiqueta ?? paso.label}
       </span>
       <span className="block text-[10px] mt-1" style={{ color: e.textoSuave }}>
         {pie}

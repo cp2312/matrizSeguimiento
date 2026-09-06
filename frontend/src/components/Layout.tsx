@@ -4,9 +4,11 @@ import { useAuth } from '../context/AuthContext';
 
 interface Props {
   children: React.ReactNode;
+  /** 'completo' quita el ancho máximo para pantallas densas (tableros, matrices) */
+  ancho?: 'normal' | 'completo';
 }
 
-export function Layout({ children }: Props) {
+export function Layout({ children, ancho = 'normal' }: Props) {
   const { usuario, logout } = useAuth();
   const { pathname } = useLocation();
 
@@ -53,7 +55,9 @@ export function Layout({ children }: Props) {
         </div>
       </Encabezado>
 
-      <main className="max-w-7xl mx-auto px-6 py-8">{children}</main>
+      <main className={`mx-auto px-6 py-8 ${ancho === 'completo' ? 'max-w-[1800px]' : 'max-w-7xl'}`}>
+        {children}
+      </main>
     </div>
   );
 }
