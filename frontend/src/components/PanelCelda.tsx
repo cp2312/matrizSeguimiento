@@ -1,10 +1,17 @@
 import { useState } from 'react';
 import { api } from '../lib/api';
-import { Boton } from './ui/Boton';
+import { BotonConfirmar } from './ui/BotonConfirmar';
 import { Alerta } from './ui/Alerta';
 import { ESTADOS, ORDEN_ESTADOS } from '../lib/estados';
 import { etiquetaPaso } from '../lib/bloques';
+import { sumarDiasHabiles } from '@shared/businessDays';
 import type { CellStatus, MatrixCell, ResolvedStep, SubjectTeacher } from '@shared/types';
+
+/** 'YYYY-MM-DD' -> 'DD/MM/AAAA', sin pasar por Date (evita corrimientos de zona horaria) */
+function fechaLegible(iso: string): string {
+  const [anio, mes, dia] = iso.split('-');
+  return `${dia}/${mes}/${anio}`;
+}
 
 interface Props {
   subjectId: number;
@@ -19,34 +26,75 @@ interface Props {
 
 const HOY = new Date().toISOString().slice(0, 10);
 
+type EdicionContrato = { start_date: string; end_date: string; contract_type: string };
+
+function aEdicion(t: SubjectTeacher): EdicionContrato {
+  return { start_date: t.start_date ?? '', end_date: t.end_date ?? '', contract_type: t.contract_type ?? '' };
+}
+
 /** Aquí (y no al crear la asignatura) se sabe de verdad el tipo de contrato de cada
- *  docente ya asignado -- quién está asignado se maneja en su propia sección. */
+ *  docente ya asignado -- quién está asignado se maneja en su propia sección.
+ *
+ *  Los campos ya no se guardan solos al salir de cada uno: se acumulan en
+ *  `ediciones` y solo se envían al confirmar "Guardar", para que un dato a
+ *  medio escribir no quede guardado por accidente. "Deshacer" descarta lo
+ *  tecleado y vuelve a lo que ya estaba guardado. */
 function DocentesContrato({ subjectId, teachers, onCambiados, onCeldaActualizada }: {
   subjectId: number;
   teachers: SubjectTeacher[];
   onCambiados: (teachers: SubjectTeacher[]) => void;
   onCeldaActualizada: (celda: MatrixCell) => void;
 }) {
-  const [guardando, setGuardando] = useState<number | null>(null);
+  const [ediciones, setEdiciones] = useState<Record<number, EdicionContrato>>({});
+  // Mientras se está confirmando el guardado de un docente, se oculta su
+  // "Deshacer" -- si no, compiten dos formas de "no, esperá" a la vez.
+  const [confirmandoId, setConfirmandoId] = useState<number | null>(null);
 
-  async function actualizar(t: SubjectTeacher, campo: 'start_date' | 'end_date' | 'contract_type', valor: string) {
-    const nuevoValor = valor || null;
-    if (nuevoValor === t[campo]) return;
+  function valor(t: SubjectTeacher, campo: keyof EdicionContrato): string {
+    return ediciones[t.id]?.[campo] ?? aEdicion(t)[campo];
+  }
 
-    setGuardando(t.id);
-    try {
-      const nuevaLista = teachers.map((x) => (x.id === t.id ? { ...x, [campo]: nuevoValor } : x))
-        .map((x) => ({ id: x.id, fullName: x.full_name, startDate: x.start_date, endDate: x.end_date, contractType: x.contract_type }));
-      const resultado = await api.patch<{ teachers: SubjectTeacher[]; contratoCelda: MatrixCell | null }>(
-        `/subjects/${subjectId}`, { teachers: nuevaLista }
-      );
-      onCambiados(resultado.teachers);
-      // Si esto era lo que faltaba para completar el tipo de contrato, el backend
-      // ya marcó ese paso como terminado -- se refleja al instante, sin recargar.
-      if (resultado.contratoCelda) onCeldaActualizada(resultado.contratoCelda);
-    } finally {
-      setGuardando(null);
-    }
+  function setCampo(t: SubjectTeacher, campo: keyof EdicionContrato, valorNuevo: string) {
+    setEdiciones((prev) => ({
+      ...prev,
+      [t.id]: { ...(prev[t.id] ?? aEdicion(t)), [campo]: valorNuevo },
+    }));
+  }
+
+  function hayCambios(t: SubjectTeacher): boolean {
+    const e = ediciones[t.id];
+    if (!e) return false;
+    const original = aEdicion(t);
+    return e.start_date !== original.start_date || e.end_date !== original.end_date || e.contract_type !== original.contract_type;
+  }
+
+  function deshacer(t: SubjectTeacher) {
+    setEdiciones((prev) => {
+      const { [t.id]: _quitado, ...resto } = prev;
+      return resto;
+    });
+  }
+
+  async function guardar(t: SubjectTeacher) {
+    const e = ediciones[t.id];
+    if (!e) return;
+
+    const nuevaLista = teachers.map((x) => ({
+      id: x.id,
+      fullName: x.full_name,
+      startDate: (x.id === t.id ? e.start_date : x.start_date) || null,
+      endDate: (x.id === t.id ? e.end_date : x.end_date) || null,
+      contractType: (x.id === t.id ? e.contract_type : x.contract_type) || null,
+    }));
+
+    const resultado = await api.patch<{ teachers: SubjectTeacher[]; contratoCelda: MatrixCell | null }>(
+      `/subjects/${subjectId}`, { teachers: nuevaLista }
+    );
+    onCambiados(resultado.teachers);
+    // Si esto era lo que faltaba para completar el tipo de contrato, el backend
+    // ya marcó ese paso como terminado -- se refleja al instante, sin recargar.
+    if (resultado.contratoCelda) onCeldaActualizada(resultado.contratoCelda);
+    deshacer(t);
   }
 
   if (teachers.length === 0) {
@@ -61,17 +109,14 @@ function DocentesContrato({ subjectId, teachers, onCambiados, onCeldaActualizada
     <div className="space-y-2 mb-3">
       {teachers.map((t) => (
         <div key={t.id} className="bg-slate-50 rounded-md px-2.5 py-2 space-y-1.5">
-          <p className="text-[12px] font-medium text-slate-800">
-            {t.full_name}
-            {guardando === t.id && <span className="text-[10px] text-slate-400 font-normal ml-1.5">guardando…</span>}
-          </p>
+          <p className="text-[12px] font-medium text-slate-800">{t.full_name}</p>
           <div className="flex gap-1.5">
             <label className="flex-1 block">
               <span className="block text-[10px] text-slate-400 mb-0.5">Fecha inicio</span>
               <input
                 type="date"
-                defaultValue={t.start_date ?? ''}
-                onBlur={(e) => actualizar(t, 'start_date', e.target.value)}
+                value={valor(t, 'start_date')}
+                onChange={(e) => setCampo(t, 'start_date', e.target.value)}
                 className="w-full h-7 px-1.5 rounded border border-slate-300 text-[11px] outline-none focus:ring-2 focus:ring-slate-400"
               />
             </label>
@@ -79,18 +124,40 @@ function DocentesContrato({ subjectId, teachers, onCambiados, onCeldaActualizada
               <span className="block text-[10px] text-slate-400 mb-0.5">Fecha fin</span>
               <input
                 type="date"
-                defaultValue={t.end_date ?? ''}
-                onBlur={(e) => actualizar(t, 'end_date', e.target.value)}
+                value={valor(t, 'end_date')}
+                onChange={(e) => setCampo(t, 'end_date', e.target.value)}
                 className="w-full h-7 px-1.5 rounded border border-slate-300 text-[11px] outline-none focus:ring-2 focus:ring-slate-400"
               />
             </label>
           </div>
           <input
-            defaultValue={t.contract_type ?? ''}
+            value={valor(t, 'contract_type')}
             placeholder="Tipo de contrato"
-            onBlur={(e) => actualizar(t, 'contract_type', e.target.value)}
+            onChange={(e) => setCampo(t, 'contract_type', e.target.value)}
             className="w-full h-7 px-1.5 rounded border border-slate-300 text-[11px] outline-none focus:ring-2 focus:ring-slate-400"
           />
+
+          {hayCambios(t) && (
+            <div className="flex items-center justify-end gap-2 pt-0.5">
+              {confirmandoId !== t.id && (
+                <button
+                  type="button"
+                  onClick={() => deshacer(t)}
+                  className="text-[11px] text-slate-500 hover:text-slate-800"
+                >
+                  Deshacer
+                </button>
+              )}
+              <BotonConfirmar
+                etiqueta="Guardar"
+                etiquetaConfirmar="Sí, guardar"
+                mensaje={`¿Guardar los datos de contrato de ${t.full_name}?`}
+                onConfirmar={() => guardar(t)}
+                onConfirmandoChange={(v) => setConfirmandoId(v ? t.id : null)}
+                className="h-6 px-2 text-[11px]"
+              />
+            </div>
+          )}
         </div>
       ))}
     </div>
@@ -110,9 +177,13 @@ export function PanelCelda({ subjectId, paso, celda, teachers, onGuardado, onTea
     secondComment: celda?.second_comment ?? '',
     branchValue: celda?.branch_value ?? null as boolean | null,
     dueDate: celda?.due_date ?? '',
+    referenceDate: celda?.reference_date ?? '',
   });
   const [error, setError] = useState('');
-  const [enviando, setEnviando] = useState(false);
+  // Mientras el botón de guardar está pidiendo confirmación, se oculta el
+  // "Cancelar" del panel -- si no, quedan dos botones "Cancelar" a la vez
+  // (uno cierra todo el panel, el otro solo vuelve del paso de confirmación).
+  const [confirmandoGuardado, setConfirmandoGuardado] = useState(false);
 
   if (pathCargado !== path) {
     setPathCargado(path);
@@ -123,27 +194,36 @@ export function PanelCelda({ subjectId, paso, celda, teachers, onGuardado, onTea
       secondComment: celda?.second_comment ?? '',
       branchValue: celda?.branch_value ?? null,
       dueDate: celda?.due_date ?? '',
+      referenceDate: celda?.reference_date ?? '',
     });
     setError('');
   }
 
-  async function guardar() {
+  /** Corre antes de pedir confirmación -- si algo falta, se avisa de una vez
+   *  en vez de hacer confirmar algo que de todas formas va a fallar. */
+  function validar(): boolean {
     setError('');
 
     if (form.status === 'terminado') {
-      if (!form.doneDate) return setError('Para marcar como terminado hace falta la fecha');
+      if (!form.doneDate) { setError('Para marcar como terminado hace falta la fecha'); return false; }
       if (step.commentRequired && !form.comment.trim()) {
-        return setError(`Este paso requiere ${(step.commentLabel ?? 'un comentario').toLowerCase()}`);
+        setError(`Este paso requiere ${(step.commentLabel ?? 'un comentario').toLowerCase()}`);
+        return false;
       }
       if (step.secondCommentRequired && !form.secondComment.trim()) {
-        return setError(`Este paso requiere ${(step.secondCommentLabel ?? 'un segundo comentario').toLowerCase()}`);
+        setError(`Este paso requiere ${(step.secondCommentLabel ?? 'un segundo comentario').toLowerCase()}`);
+        return false;
       }
       if (step.isBranchPoint && form.branchValue === null) {
-        return setError('Elige una de las dos opciones');
+        setError('Elige una de las dos opciones');
+        return false;
       }
     }
 
-    setEnviando(true);
+    return true;
+  }
+
+  async function guardar() {
     try {
       const celdaGuardada = await api.patch<MatrixCell>(
         `/subjects/${subjectId}/matrix/${path}`,
@@ -154,6 +234,7 @@ export function PanelCelda({ subjectId, paso, celda, teachers, onGuardado, onTea
           secondComment: form.secondComment.trim() || null,
           branchValue: step.isBranchPoint ? form.branchValue : null,
           dueDate: step.hasDueDate ? form.dueDate || null : null,
+          referenceDate: step.autoDueDate ? form.referenceDate || null : null,
           version: celda?.version,
         }
       );
@@ -166,8 +247,6 @@ export function PanelCelda({ subjectId, paso, celda, teachers, onGuardado, onTea
       } else {
         setError(err.message);
       }
-    } finally {
-      setEnviando(false);
     }
   }
 
@@ -249,7 +328,27 @@ export function PanelCelda({ subjectId, paso, celda, teachers, onGuardado, onTea
         />
       </label>
 
-      {step.hasDueDate && (
+      {step.autoDueDate ? (
+        <label className="block mb-3">
+          <span className="text-[11px] text-slate-500">
+            {step.autoDueDate.referenceLabel ?? 'Fecha inicial'}
+          </span>
+          <input
+            type="date"
+            value={form.referenceDate}
+            onChange={(e) => setForm({ ...form, referenceDate: e.target.value })}
+            className="w-full h-8 mt-1 px-2 rounded-md border border-slate-300 text-[12px]
+                       outline-none focus:ring-2 focus:ring-slate-400"
+          />
+          <span className="block text-[10px] text-slate-400 mt-1">
+            {form.referenceDate
+              ? `Vence el ${fechaLegible(sumarDiasHabiles(form.referenceDate, step.autoDueDate.businessDays))} ` +
+                `(${step.autoDueDate.businessDays} días hábiles después). Si para entonces sigue sin ` +
+                'terminar, se avisa por correo al encargado -- no hace falta terminarlo antes si ya está listo.'
+              : `Se calcula sola: ${step.autoDueDate.businessDays} días hábiles después de esta fecha.`}
+          </span>
+        </label>
+      ) : step.hasDueDate && (
         <label className="block mb-3">
           <span className="text-[11px] text-slate-500">{step.dueDateLabel ?? 'Fecha límite'}</span>
           <input
@@ -299,13 +398,27 @@ export function PanelCelda({ subjectId, paso, celda, teachers, onGuardado, onTea
 
       <Alerta>{error}</Alerta>
 
-      <div className="flex items-center justify-between mt-3">
-        <span className="text-[10px] text-slate-400">
+      <div className="flex items-center justify-between mt-3 gap-2">
+        <span className="text-[10px] text-slate-400 shrink-0">
           {celda?.initials ? `Último: ${celda.initials}` : ''}
         </span>
-        <Boton variante="primario" onClick={guardar} disabled={enviando} className="h-8 px-3 text-[12px]">
-          {enviando ? 'Guardando…' : 'Guardar'}
-        </Boton>
+        <div className="flex items-center gap-2">
+          {!confirmandoGuardado && (
+            <button type="button" onClick={onCerrar} className="text-[12px] text-slate-500 hover:text-slate-800">
+              Cancelar
+            </button>
+          )}
+          <BotonConfirmar
+            variante="primario"
+            etiqueta="Guardar"
+            etiquetaConfirmar="Sí, guardar"
+            mensaje="¿Confirmás guardar estos cambios?"
+            onValidar={validar}
+            onConfirmar={guardar}
+            onConfirmandoChange={setConfirmandoGuardado}
+            className="h-8 px-3 text-[12px]"
+          />
+        </div>
       </div>
     </div>
   );

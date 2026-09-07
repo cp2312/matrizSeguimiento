@@ -1,4 +1,4 @@
-import type { ProgramType } from '@shared/types';
+import type { ProgramLevel, ProgramType } from '@shared/types';
 
 /**
  * Idioma visual del tipo de programa: mismo patrón de swatch + etiqueta que
@@ -17,4 +17,15 @@ export const ETIQUETA_TIPO: Record<ProgramType, string> = {
   presencial: 'Presencial con asignatura virtual',
   virtual: 'Virtual',
   hibrido: 'Híbrido',
+};
+
+/** Nivel académico de un programa virtual -- ver ProgramLevel */
+export const NIVELES_PROGRAMA: { valor: ProgramLevel; etiqueta: string }[] = [
+  { valor: 'pregrado', etiqueta: 'Pregrado' },
+  { valor: 'posgrado', etiqueta: 'Posgrado' },
+];
+
+export const ETIQUETA_NIVEL: Record<ProgramLevel, string> = {
+  pregrado: 'Pregrado',
+  posgrado: 'Posgrado',
 };

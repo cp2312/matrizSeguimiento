@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Campo } from '../components/ui/Campo';
 import { Boton } from '../components/ui/Boton';
@@ -148,7 +148,9 @@ export default function Login() {
           </Boton>
 
           <p className="mt-5 text-xs text-slate-500 text-center">
-            ¿Olvidó su contraseña? Contacte al administrador
+            <Link to="/olvido-password" className="hover:text-slate-700 underline underline-offset-2">
+              ¿Olvidó su contraseña?
+            </Link>
           </p>
 
         </form>

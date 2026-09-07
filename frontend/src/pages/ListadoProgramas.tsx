@@ -11,11 +11,12 @@ import { Modal } from '../components/ui/Modal';
 import { Alerta } from '../components/ui/Alerta';
 import { TituloPagina } from '../components/ui/TituloPagina';
 import { Cargando, Vacio } from '../components/ui/Estado';
-import { TIPOS_PROGRAMA, ORDEN_TIPOS, ETIQUETA_TIPO } from '../lib/tiposPrograma';
+import { TIPOS_PROGRAMA, ORDEN_TIPOS, ETIQUETA_TIPO, NIVELES_PROGRAMA, ETIQUETA_NIVEL } from '../lib/tiposPrograma';
 import { normalizar } from '../lib/texto';
-import type { Program, ProgramType } from '@shared/types';
+import type { Program, ProgramLevel, ProgramType } from '@shared/types';
 
 type Filtro = 'todos' | ProgramType;
+type FiltroNivel = 'todos' | ProgramLevel;
 
 function formatearFecha(iso: string) {
   return new Date(iso).toLocaleDateString('es-CO', {
@@ -95,13 +96,23 @@ export default function ListadoProgramas() {
   const [editando, setEditando] = useState<Program | null>(null);
   const [eliminando, setEliminando] = useState<Program | null>(null);
   const [filtro, setFiltro] = useState<Filtro>('todos');
+  // Solo se usa mientras filtro === 'virtual' -- sub-filtro de pregrado/posgrado
+  const [nivelFiltro, setNivelFiltro] = useState<FiltroNivel>('todos');
   const [busqueda, setBusqueda] = useState('');
 
   const navigate = useNavigate();
   const activos = programas?.filter((p) => !p.archived).length ?? 0;
   const visibles = (programas ?? []).filter(
-    (p) => (filtro === 'todos' || p.type === filtro) && normalizar(p.name).includes(normalizar(busqueda))
+    (p) =>
+      (filtro === 'todos' || p.type === filtro) &&
+      (filtro !== 'virtual' || nivelFiltro === 'todos' || p.academic_level === nivelFiltro) &&
+      normalizar(p.name).includes(normalizar(busqueda))
   );
+
+  function elegirFiltro(f: Filtro) {
+    setFiltro(f);
+    setNivelFiltro('todos');
+  }
 
   return (
     <Layout>
@@ -128,15 +139,32 @@ export default function ListadoProgramas() {
       {!cargando && programas && programas.length > 0 && (
         <>
           <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-            <div className="flex items-center gap-1">
-              <FiltroPildora activo={filtro === 'todos'} onClick={() => setFiltro('todos')}>
+            <div className="flex flex-wrap items-center gap-1">
+              <FiltroPildora activo={filtro === 'todos'} onClick={() => elegirFiltro('todos')}>
                 Todos
               </FiltroPildora>
               {ORDEN_TIPOS.map((t) => (
-                <FiltroPildora key={t} activo={filtro === t} onClick={() => setFiltro(t)}>
+                <FiltroPildora key={t} activo={filtro === t} onClick={() => elegirFiltro(t)}>
                   <TipoSwatch tipo={t} />
                 </FiltroPildora>
               ))}
+
+              {filtro === 'virtual' && (
+                <div className="flex items-center gap-1 ml-1 pl-2 border-l border-slate-200">
+                  <FiltroPildora activo={nivelFiltro === 'todos'} onClick={() => setNivelFiltro('todos')}>
+                    Todos
+                  </FiltroPildora>
+                  {NIVELES_PROGRAMA.map((n) => (
+                    <FiltroPildora
+                      key={n.valor}
+                      activo={nivelFiltro === n.valor}
+                      onClick={() => setNivelFiltro(n.valor)}
+                    >
+                      {n.etiqueta}
+                    </FiltroPildora>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="relative w-full max-w-xs">
@@ -155,7 +183,11 @@ export default function ListadoProgramas() {
           {visibles.length === 0 ? (
             <Vacio mensaje={
               busqueda ? `Ningún programa coincide con "${busqueda}".` : 'Ningún programa coincide con este filtro.'
-            } />
+            }>
+              <Boton onClick={() => { setBusqueda(''); elegirFiltro('todos'); }}>
+                Limpiar búsqueda
+              </Boton>
+            </Vacio>
           ) : (
             <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-x-auto">
               <table className="w-full text-sm">
@@ -196,6 +228,11 @@ export default function ListadoProgramas() {
                       </td>
                       <td className="px-2 text-[13px]">
                         <TipoSwatch tipo={p.type} />
+                        {p.type === 'virtual' && p.academic_level && (
+                          <span className="block text-[11px] text-slate-400 mt-1">
+                            {ETIQUETA_NIVEL[p.academic_level]}
+                          </span>
+                        )}
                         {p.archived && (
                           <span className="block text-[11px] text-slate-400 mt-1">Archivado</span>
                         )}
@@ -270,6 +307,7 @@ function FiltroPildora({
 }
 
 const TIPOS_SELECT = ORDEN_TIPOS.map((t) => ({ valor: t, etiqueta: ETIQUETA_TIPO[t] }));
+const NIVELES_SELECT = NIVELES_PROGRAMA;
 
 function ModalPrograma({
   abierto, programa, onCerrar, onGuardado,
@@ -281,11 +319,14 @@ function ModalPrograma({
 }) {
   const esEdicion = !!programa;
 
-  const [form, setForm] = useState<{ name: string; notes: string; type: ProgramType }>({
-    name: '', notes: '', type: 'presencial',
+  const [form, setForm] = useState<{ name: string; notes: string; type: ProgramType; academicLevel: ProgramLevel | '' }>({
+    name: '', notes: '', type: 'presencial', academicLevel: '',
   });
   const [error, setError] = useState('');
   const [enviando, setEnviando] = useState(false);
+  // Primer clic en "Guardar" arma la confirmación; el segundo (sobre "Sí,
+  // guardar") sí llama a la API. Cualquier edición vuelve a pedirla.
+  const [confirmando, setConfirmando] = useState(false);
 
   // Precarga los datos al abrir en modo edición
   const [idCargado, setIdCargado] = useState<number | null>(null);
@@ -295,15 +336,33 @@ function ModalPrograma({
       name: programa.name,
       notes: programa.notes ?? '',
       type: programa.type,
+      academicLevel: programa.academic_level ?? '',
     });
   }
   if (abierto && !programa && idCargado !== null) {
     setIdCargado(null);
-    setForm({ name: '', notes: '', type: 'presencial' });
+    setForm({ name: '', notes: '', type: 'presencial', academicLevel: '' });
+  }
+  if (!abierto && confirmando) setConfirmando(false);
+
+  function set<K extends keyof typeof form>(campo: K, valor: (typeof form)[K]) {
+    setForm({ ...form, [campo]: valor });
+    setConfirmando(false);
   }
 
   async function enviar(e: React.FormEvent) {
     e.preventDefault();
+
+    if (form.type === 'virtual' && !form.academicLevel) {
+      return setError('Un programa virtual debe indicar si es de pregrado o posgrado');
+    }
+
+    if (!confirmando) {
+      setError('');
+      setConfirmando(true);
+      return;
+    }
+
     setError('');
     setEnviando(true);
 
@@ -312,8 +371,9 @@ function ModalPrograma({
         await api.patch(`/programs/${programa!.id}`, form);
       } else {
         await api.post('/programs', form);
-        setForm({ name: '', notes: '', type: 'presencial' });
+        setForm({ name: '', notes: '', type: 'presencial', academicLevel: '' });
       }
+      setConfirmando(false);
       onGuardado();
     } catch (err: any) {
       setError(err.message);
@@ -329,29 +389,47 @@ function ModalPrograma({
           etiqueta="Nombre"
           required
           value={form.name}
-          onChange={(e) => setForm({ ...form, name: e.target.value })}
+          onChange={(e) => set('name', e.target.value)}
         />
 
         <AreaTexto
           etiqueta="Notas (opcional)"
           rows={3}
           value={form.notes}
-          onChange={(e) => setForm({ ...form, notes: e.target.value })}
+          onChange={(e) => set('notes', e.target.value)}
         />
 
         <Select
           etiqueta="Tipo"
           opciones={TIPOS_SELECT}
           value={form.type}
-          onChange={(e) => setForm({ ...form, type: e.target.value as ProgramType })}
+          onChange={(e) => set('type', e.target.value as ProgramType)}
         />
+
+        {form.type === 'virtual' && (
+          <Select
+            etiqueta="Nivel académico"
+            opciones={[{ valor: '', etiqueta: 'Selecciona uno…' }, ...NIVELES_SELECT]}
+            value={form.academicLevel}
+            onChange={(e) => set('academicLevel', e.target.value as ProgramLevel | '')}
+          />
+        )}
 
         <Alerta>{error}</Alerta>
 
+        {confirmando && (
+          <p className="text-[13px] text-slate-600 bg-slate-50 rounded-lg px-3 py-2">
+            ¿Confirmás {esEdicion ? 'guardar los cambios en' : 'crear'}{' '}
+            <strong>{form.name || (esEdicion ? 'este programa' : 'el nuevo programa')}</strong>?
+          </p>
+        )}
+
         <div className="flex gap-2 justify-end pt-1">
-          <Boton type="button" onClick={onCerrar}>Cancelar</Boton>
+          <Boton type="button" onClick={() => (confirmando ? setConfirmando(false) : onCerrar())}>
+            {confirmando ? 'Volver' : 'Cancelar'}
+          </Boton>
           <Boton type="submit" variante="primario" disabled={enviando}>
-            {enviando ? 'Guardando…' : esEdicion ? 'Guardar cambios' : 'Crear programa'}
+            {enviando ? 'Guardando…' : confirmando ? 'Sí, guardar' : esEdicion ? 'Guardar cambios' : 'Crear programa'}
           </Boton>
         </div>
       </form>

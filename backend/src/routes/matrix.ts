@@ -6,6 +6,7 @@ import {
   buildStepPaths, isValidStepPath, findStepDef, totalSteps, pasosVisibles, parseStepPath, etiquetaPaso,
   excluirInstanciasExtraSinUsar,
 } from '../../../shared/pipelineTemplate.js';
+import { sumarDiasHabiles } from '../../../shared/businessDays.js';
 import type { MatrixCell, Subject, SubjectTeacher } from '../../../shared/types.js';
 
 // Los 4 apartados del proceso con encargado propio (aparte de "jefe", que no es un apartado)
@@ -118,7 +119,15 @@ router.patch('/subjects/:subjectId/matrix/*stepPath', async (req, res) => {
     }
 
     const def = findStepDef(stepPath)!;
-    const { status, doneDate, comment, secondComment, branchValue, dueDate, version } = req.body;
+    const { status, doneDate, comment, secondComment, branchValue, dueDate, referenceDate, version } = req.body;
+
+    // Pasos con StepDef.autoDueDate (p. ej. "Envío para ajustes de experto"):
+    // la fecha límite no la escribe el cliente, sale sola de referenceDate +
+    // los días hábiles que indique el paso -- así no hay forma de que el
+    // cliente mande una fecha límite que no corresponda a la fecha de envío.
+    const fechaLimiteCalculada = def.step.autoDueDate && referenceDate
+      ? sumarDiasHabiles(referenceDate, def.step.autoDueDate.businessDays)
+      : null;
 
     // Comentario obligatorio
     if (def.step.commentRequired && status === 'terminado' && !comment?.trim()) {
@@ -165,8 +174,8 @@ router.patch('/subjects/:subjectId/matrix/*stepPath', async (req, res) => {
     try {
       const celda = await queryOne<MatrixCell>(
         `INSERT INTO matrix_cells
-           (subject_id, step_path, status, done_date, initials, comment, second_comment, branch_value, due_date, updated_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+           (subject_id, step_path, status, done_date, initials, comment, second_comment, branch_value, due_date, reference_date, updated_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
          ON CONFLICT (subject_id, step_path)
          DO UPDATE SET
            status         = EXCLUDED.status,
@@ -176,9 +185,11 @@ router.patch('/subjects/:subjectId/matrix/*stepPath', async (req, res) => {
            second_comment = EXCLUDED.second_comment,
            branch_value   = EXCLUDED.branch_value,
            due_date       = EXCLUDED.due_date,
+           reference_date = EXCLUDED.reference_date,
            -- Si la fecha límite cambió, se rehabilita el aviso de "por
            -- vencer" para la nueva fecha (si no, correrla hacia adelante
-           -- nunca volvería a avisar).
+           -- nunca volvería a avisar). Aplica igual si cambió porque
+           -- cambió la fecha de envío de un paso con autoDueDate.
            due_date_warning_sent_at =
              CASE WHEN matrix_cells.due_date IS DISTINCT FROM EXCLUDED.due_date
                   THEN NULL ELSE matrix_cells.due_date_warning_sent_at END,
@@ -190,7 +201,8 @@ router.patch('/subjects/:subjectId/matrix/*stepPath', async (req, res) => {
           doneDate ?? null, usuario.initials,
           comment ?? null, secondComment ?? null,
           def.step.isBranchPoint ? branchValue ?? null : null,
-          def.step.hasDueDate ? dueDate ?? null : null,
+          def.step.autoDueDate ? fechaLimiteCalculada : (def.step.hasDueDate ? dueDate ?? null : null),
+          def.step.autoDueDate ? referenceDate ?? null : null,
           usuario.id,
         ]
       );

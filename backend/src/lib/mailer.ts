@@ -312,6 +312,90 @@ function construirHtmlFechaLimite(datos: AvisoFechaLimite, link: string, vencido
 </div>`.trim();
 }
 
+interface CorreoRecuperacion {
+  paraEmail: string;
+  paraNombre: string;
+  /** token en claro (sin hashear); solo vive en este correo, nunca en la base */
+  token: string;
+}
+
+function construirLinkRecuperacion(token: string): string {
+  const base = process.env.CLIENT_ORIGIN ?? 'http://localhost:5173';
+  return `${base}/restablecer-password?token=${encodeURIComponent(token)}`;
+}
+
+function construirHtmlRecuperacion(nombre: string, link: string): string {
+  return `
+<div style="font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; background:#F1F5F9; padding:32px 16px;">
+  <div style="max-width:480px; margin:0 auto; background:#FFFFFF; border-radius:16px; overflow:hidden; border:1px solid #E2E8F0;">
+    <div style="background:#0F172A; padding:18px 28px;">
+      <p style="margin:0; color:#FFFFFF; font-size:14px; font-weight:600; letter-spacing:.02em;">
+        Matriz de Seguimiento
+      </p>
+    </div>
+
+    <div style="padding:28px;">
+      <h1 style="margin:0 0 18px; color:#0F172A; font-size:19px; line-height:1.3;">
+        Restablecer contraseña
+      </h1>
+
+      <p style="margin:0 0 24px; color:#475569; font-size:14px; line-height:1.55;">
+        Hola ${nombre}, recibimos una solicitud para restablecer tu contraseña. Si fuiste tú,
+        hacé clic en el botón de abajo para elegir una nueva. El enlace vence en 1 hora.
+      </p>
+
+      <a href="${link}"
+         style="display:inline-block; background:#0F172A; color:#FFFFFF; text-decoration:none;
+                font-size:14px; font-weight:600; padding:12px 22px; border-radius:10px;">
+        Restablecer contraseña →
+      </a>
+
+      <p style="margin:24px 0 0; color:#94A3B8; font-size:12px; line-height:1.5;">
+        Si no solicitaste esto, ignorá este correo — tu contraseña sigue siendo la misma.
+      </p>
+    </div>
+  </div>
+
+  <p style="max-width:480px; margin:16px auto 0; text-align:center; color:#94A3B8; font-size:11px;">
+    Aviso automático — no hace falta responder a este correo.
+  </p>
+</div>`.trim();
+}
+
+/**
+ * Envía el correo de "olvidé mi contraseña" con el link para restablecerla.
+ * Nunca lanza — el llamador siempre responde igual al usuario, exista o no
+ * exista esa cuenta, para no filtrar qué correos están registrados.
+ */
+export async function enviarCorreoRecuperacion(datos: CorreoRecuperacion): Promise<void> {
+  const t = getTransporter();
+  if (!t) {
+    console.warn(`[mailer] SMTP no configurado — se omite el correo de recuperación a ${datos.paraEmail}`);
+    return;
+  }
+
+  const nombre = escapeHtml(datos.paraNombre);
+  const link = construirLinkRecuperacion(datos.token);
+
+  try {
+    const info = await t.sendMail({
+      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      to: datos.paraEmail,
+      subject: 'Restablecer tu contraseña — Matriz de Seguimiento',
+      text:
+        `Hola ${datos.paraNombre},\n\n` +
+        `Recibimos una solicitud para restablecer tu contraseña. Si fuiste vos, ` +
+        `abrí este enlace para elegir una nueva (vence en 1 hora):\n\n${link}\n\n` +
+        `Si no solicitaste esto, ignorá este correo.\n\n` +
+        `— Matriz de Seguimiento`,
+      html: construirHtmlRecuperacion(nombre, link),
+    });
+    console.log(`[mailer] Correo de recuperación enviado a ${datos.paraEmail} (${info.messageId})`);
+  } catch (err) {
+    console.error(`[mailer] No se pudo enviar el correo de recuperación a ${datos.paraEmail}:`, err);
+  }
+}
+
 /**
  * Avisa por correo al encargado de una categoría (OVA, Podcast, Video de
  * contenido, Guías) que la fecha límite de un paso puntual (p. ej. "Creación
