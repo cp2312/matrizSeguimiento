@@ -58,12 +58,13 @@ export default function Asignatura() {
         titulo={asignatura.name}
         subtitulo={subtitulo}
         volver={
-          <Link
-            to={`/programas/${asignatura.program_id}`}
-            className="text-[13px] text-slate-500 hover:text-slate-800"
-          >
-            ← {asignatura.semester}
-          </Link>
+          <nav className="flex items-center gap-1.5 text-[13px] text-slate-500">
+            <Link to="/" className="hover:text-slate-800">← Programas</Link>
+            <span className="text-slate-300">/</span>
+            <Link to={`/programas/${asignatura.program_id}`} className="hover:text-slate-800">
+              {programa?.name ?? asignatura.semester}
+            </Link>
+          </nav>
         }
       >
         <span className="text-[13px] text-slate-500">

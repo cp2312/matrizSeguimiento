@@ -1,6 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Login from './pages/Login';
+import OlvidoPassword from './pages/OlvidoPassword';
+import RestablecerPassword from './pages/RestablecerPassword';
 import Usuarios from './pages/Usuarios';
 import ListadoProgramas from './pages/ListadoProgramas';
 import Programa from './pages/Programas';
@@ -31,6 +33,8 @@ export default function App() {
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/olvido-password" element={<OlvidoPassword />} />
+          <Route path="/restablecer-password" element={<RestablecerPassword />} />
 
           <Route
             path="/"

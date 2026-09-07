@@ -23,6 +23,9 @@ export type SubjectModality = 'presencial' | 'virtual';
  */
 export type ProgramType = 'hibrido' | 'presencial' | 'virtual';
 
+/** Nivel académico de un programa virtual (los otros tipos no lo piden) */
+export type ProgramLevel = 'pregrado' | 'posgrado';
+
 /** Definición de un paso individual dentro de un bloque */
 export interface StepDef {
   key: string;
@@ -50,6 +53,17 @@ export interface StepDef {
    */
   hasDueDate?: boolean;
   dueDateLabel?: string;
+  /**
+   * Fecha límite CALCULADA SOLA en vez de escrita a mano: el usuario solo
+   * indica una fecha inicial (p. ej. "enviado al experto el...") y el
+   * backend le suma `businessDays` días hábiles para obtener la fecha límite
+   * (ver shared/businessDays.ts). Va siempre junto a `hasDueDate: true`.
+   * A diferencia de una fecha límite normal, el aviso por correo (ver
+   * dueDateWarnings.ts) NO se adelanta unos días antes -- solo se dispara
+   * una vez que esa fecha límite YA venció y el paso sigue sin terminar (no
+   * bloquea marcarlo como terminado antes de tiempo, si ya está listo).
+   */
+  autoDueDate?: { businessDays: number; referenceLabel?: string };
   /** este paso es un punto de decisión (¿hay ajustes?) */
   isBranchPoint?: boolean;
   /** este paso solo se muestra si la decisión indicada tiene cierto valor */
@@ -95,6 +109,8 @@ export interface Program {
   name: string;
   notes: string | null;
   type: ProgramType;
+  /** pregrado o posgrado -- solo aplica cuando type es 'virtual'; null en los demás */
+  academic_level: ProgramLevel | null;
   archived: boolean;
   created_at: string;
   updated_at: string;
@@ -146,6 +162,8 @@ export interface MatrixCell {
   due_date: string | null;
   /** última vez que se avisó que esta fecha límite está por vencer */
   due_date_warning_sent_at: string | null;
+  /** fecha inicial de la que sale due_date, solo cuando StepDef.autoDueDate */
+  reference_date: string | null;
   version: number;
   updated_at: string;
   updated_by: number | null;
@@ -176,7 +194,7 @@ export interface ResolvedStep {
  * no porque sea una categoría más.
  */
 export type CategoriaEncargado =
-  | 'contrato' | 'podcast' | 'cuestionario_final' | 'guias' | 'ovas' | 'video_contenido' | 'jefe';
+  | 'contrato' | 'podcast' | 'cuestionario_final' | 'guias' | 'ovas' | 'video_contenido' | 'libro' | 'jefe';
 
 export interface CategoryOwner {
   category: CategoriaEncargado;
@@ -193,6 +211,7 @@ export const CATEGORIAS_ENCARGADO: Record<CategoriaEncargado, string> = {
   guias: 'Guías',
   ovas: 'OVA',
   video_contenido: 'Video de contenido',
+  libro: 'Libro',
   jefe: 'Jefe (todo lo que quede "Pendiente jefe")',
 };
 

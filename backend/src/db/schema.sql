@@ -69,6 +69,13 @@ CREATE TYPE program_type AS ENUM (
   'virtual'
 );
 
+-- Nivel academico de un programa virtual (pregrado o posgrado). Los otros
+-- tipos de programa no lo piden -- ver programs.academic_level.
+CREATE TYPE program_level AS ENUM (
+  'pregrado',
+  'posgrado'
+);
+
 
 -- ============================================================================
 --  2. FUNCION DE TRIGGER COMPARTIDA
@@ -104,6 +111,13 @@ CREATE TABLE users (
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
 
+  -- "Olvidé mi contraseña": token de un solo uso enviado por correo. Se
+  -- guarda solo el hash SHA-256 del token (nunca el token en claro) para que
+  -- un volcado de la tabla no alcance para restablecer una cuenta. NULL
+  -- cuando no hay un restablecimiento pendiente.
+  reset_token_hash       TEXT,
+  reset_token_expires_at TIMESTAMPTZ,
+
   CONSTRAINT chk_initials_formato CHECK (initials ~ '^[A-ZÃ‘]{2,4}$'),
   CONSTRAINT chk_email_formato    CHECK (email LIKE '%_@_%._%')
 );
@@ -111,6 +125,7 @@ CREATE TABLE users (
 COMMENT ON TABLE  users            IS 'Personas con acceso al sistema';
 COMMENT ON COLUMN users.initials   IS 'Iniciales que se estampan en cada paso del proceso';
 COMMENT ON COLUMN users.role       IS 'usuario: marca avances. administrador: ademas gestiona programas, asignaturas y usuarios';
+COMMENT ON COLUMN users.reset_token_hash IS 'Hash SHA-256 del token de recuperacion de contraseña vigente (NULL si no hay ninguno)';
 
 
 -- ----------------------------------------------------------------------------
@@ -122,6 +137,10 @@ CREATE TABLE programs (
   name       TEXT        NOT NULL,
   notes      TEXT,
   type       program_type NOT NULL DEFAULT 'presencial',
+  -- Pregrado o posgrado -- solo aplica cuando type es 'virtual'. Se valida en
+  -- el backend (routes/programs.ts), no con un CHECK, para no romper
+  -- programas virtuales ya existentes al agregar esta columna.
+  academic_level program_level,
   archived   BOOLEAN     NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -131,6 +150,7 @@ CREATE TABLE programs (
 
 COMMENT ON COLUMN programs.notes     IS 'Notas de especificaciones del programa';
 COMMENT ON COLUMN programs.type      IS 'hibrido, presencial o virtual -- hibrido pide modalidad por asignatura; presencial (con asignatura virtual) pide el nombre del programa';
+COMMENT ON COLUMN programs.academic_level IS 'Pregrado o posgrado, solo cuando type es virtual';
 COMMENT ON COLUMN programs.archived  IS 'Se oculta de la vista principal sin borrar el historico';
 
 
@@ -273,6 +293,11 @@ CREATE TABLE matrix_cells (
   due_date                 DATE,
   due_date_warning_sent_at TIMESTAMPTZ,
 
+  -- Solo para pasos con StepDef.autoDueDate (Libro: "Envío para ajustes de
+  -- experto"): fecha inicial a partir de la cual el backend calcula due_date
+  -- solo (sumando días hábiles) -- ver shared/businessDays.ts.
+  reference_date DATE,
+
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
 
@@ -340,7 +365,7 @@ CREATE TRIGGER trg_category_owners_touch BEFORE UPDATE ON category_owners
 -- "jefe" es especial: no es un bloque del proceso, es a quien se le avisa
 -- de CUALQUIER paso que quede en "Pendiente jefe".
 INSERT INTO category_owners (category) VALUES
-  ('contrato'), ('podcast'), ('cuestionario_final'), ('guias'), ('ovas'), ('video_contenido'), ('jefe')
+  ('contrato'), ('podcast'), ('cuestionario_final'), ('guias'), ('ovas'), ('video_contenido'), ('libro'), ('jefe')
 ON CONFLICT (category) DO NOTHING;
 
 
@@ -349,6 +374,7 @@ ON CONFLICT (category) DO NOTHING;
 -- ============================================================================
 
 CREATE INDEX idx_users_email       ON users(email) WHERE active;
+CREATE INDEX idx_users_reset_token ON users(reset_token_hash) WHERE reset_token_hash IS NOT NULL;
 CREATE INDEX idx_programs_activos  ON programs(archived, name);
 CREATE INDEX idx_subjects_program  ON subjects(program_id) WHERE NOT archived;
 CREATE INDEX idx_subjects_semestre ON subjects(program_id, semester);

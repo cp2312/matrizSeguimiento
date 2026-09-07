@@ -105,7 +105,9 @@ export default function Programa() {
           </div>
 
           {totalFiltrado === 0 ? (
-            <Vacio mensaje={`Ninguna asignatura coincide con "${busqueda}".`} />
+            <Vacio mensaje={`Ninguna asignatura coincide con "${busqueda}".`}>
+              <Boton onClick={() => setBusqueda('')}>Limpiar búsqueda</Boton>
+            </Vacio>
           ) : (
           <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto">
             <table className="w-full text-xs table-fixed" style={{ minWidth: 1650 }}>

@@ -1,9 +1,11 @@
 /**
- * Rate limiter en memoria para proteger el endpoint de login.
- * Sin dependencias externas (Redis, etc.).
+ * Rate limiter en memoria para proteger endpoints sensibles (login, "olvidé
+ * mi contraseña"). Sin dependencias externas (Redis, etc.).
  *
- * Limita a MAX_INTENTOS intentos fallidos por cada combinacion IP+email
- * dentro de una ventana de WINDOW_MS milisegundos.
+ * Limita a MAX_INTENTOS intentos por cada combinacion scope+IP+email dentro
+ * de una ventana de WINDOW_MS milisegundos. El scope evita que dos endpoints
+ * distintos (p. ej. login y recuperacion de contraseña) compartan el mismo
+ * cupo de intentos.
  */
 
 const MAX_INTENTOS = 5;
@@ -24,19 +26,22 @@ setInterval(() => {
   }
 }, 60_000);
 
-function buildKey(ip: string, email: string): string {
-  return ip + ':' + email.toLowerCase().trim();
+function buildKey(scope: string, ip: string, email: string): string {
+  return scope + ':' + ip + ':' + email.toLowerCase().trim();
 }
 
 /**
- * Registra un intento de login y devuelve si esta permitido.
+ * Registra un intento y devuelve si esta permitido.
+ * @param scope identifica el endpoint (p. ej. 'login', 'reset-password') para
+ *   que cada uno lleve su propio cupo de intentos.
  * @returns { permitido, restantes, retryAfter? }
  */
 export function rateLimit(
   ip: string,
-  email: string
+  email: string,
+  scope: string = 'login'
 ): { permitido: boolean; restantes: number; retryAfter?: number } {
-  const key = buildKey(ip, email);
+  const key = buildKey(scope, ip, email);
   const ahora = Date.now();
   const registro = intentos.get(key);
 
@@ -56,6 +61,6 @@ export function rateLimit(
 /**
  * Resetea el contador de intentos para una IP+email (despues de un login exitoso).
  */
-export function resetIntentos(ip: string, email: string): void {
-  intentos.delete(buildKey(ip, email));
+export function resetIntentos(ip: string, email: string, scope: string = 'login'): void {
+  intentos.delete(buildKey(scope, ip, email));
 }

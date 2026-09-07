@@ -39,6 +39,7 @@ export function DocentesAsignatura({ subjectId, teachers, onCambiados, onCeldaAc
   const [nombreNuevo, setNombreNuevo] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState('');
+  const [confirmandoQuitar, setConfirmandoQuitar] = useState<number | null>(null);
 
   async function guardar(nuevaLista: DocenteEntrada[]) {
     setError('');
@@ -65,6 +66,7 @@ export function DocentesAsignatura({ subjectId, teachers, onCambiados, onCeldaAc
 
   async function quitar(id: number) {
     await guardar(teachers.filter((t) => t.id !== id).map(aEntrada));
+    setConfirmandoQuitar(null);
   }
 
   return (
@@ -76,16 +78,39 @@ export function DocentesAsignatura({ subjectId, teachers, onCambiados, onCeldaAc
           <p className="text-[12px] text-slate-400">Aún no hay docentes asignados.</p>
         )}
         {teachers.map((t) => (
-          <div key={t.id} className="flex items-center justify-between bg-slate-50 rounded-md px-2.5 py-1.5">
-            <span className="text-[13px] text-slate-700">{t.full_name}</span>
-            <button
-              onClick={() => quitar(t.id)}
-              disabled={enviando}
-              aria-label={`Quitar a ${t.full_name}`}
-              className="text-slate-400 hover:text-red-600 disabled:opacity-50 text-sm leading-none"
-            >
-              ✕
-            </button>
+          <div key={t.id} className="flex items-center justify-between bg-slate-50 rounded-md px-2.5 py-1.5 gap-2">
+            {confirmandoQuitar === t.id ? (
+              <>
+                <span className="text-[11.5px] text-slate-500">¿Quitar a {t.full_name}?</span>
+                <span className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => setConfirmandoQuitar(null)}
+                    className="text-[11.5px] text-slate-500 hover:text-slate-800 underline underline-offset-2"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={() => quitar(t.id)}
+                    disabled={enviando}
+                    className="text-[11.5px] font-medium text-red-600 hover:text-red-700 disabled:opacity-50"
+                  >
+                    {enviando ? 'Quitando…' : 'Sí, quitar'}
+                  </button>
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="text-[13px] text-slate-700">{t.full_name}</span>
+                <button
+                  onClick={() => setConfirmandoQuitar(t.id)}
+                  disabled={enviando}
+                  aria-label={`Quitar a ${t.full_name}`}
+                  className="text-slate-400 hover:text-red-600 disabled:opacity-50 text-sm leading-none"
+                >
+                  ✕
+                </button>
+              </>
+            )}
           </div>
         ))}
       </div>

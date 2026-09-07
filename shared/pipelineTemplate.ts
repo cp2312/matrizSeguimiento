@@ -75,7 +75,16 @@ export const PIPELINE_TEMPLATE: BlockDef[] = [
         hasSecondComment: true,
         secondCommentLabel: 'Porcentaje de IA',
       },
-      { key: 'envio_ajustes_experto', label: 'Envío para ajustes de experto', hasComment: true },
+      {
+        key: 'envio_ajustes_experto',
+        label: 'Envío para ajustes de experto',
+        hasComment: true,
+        hasDueDate: true,
+        // La fecha límite no se escribe a mano: sale sola de la fecha de envío + 4
+        // días hábiles. Si para entonces sigue sin terminar, se avisa por correo al
+        // encargado de "Libro" (ver dueDateWarnings.ts).
+        autoDueDate: { businessDays: 4, referenceLabel: 'Fecha de envío al experto' },
+      },
       { key: 'recepcion_ajustes', label: 'Recepción ajustes', hasComment: true },
       { key: 'revision_par_disciplinar', label: 'Revisión par disciplinar', hasComment: true },
       { key: 'correccion_estilo', label: 'Corrección de estilo', hasComment: false },

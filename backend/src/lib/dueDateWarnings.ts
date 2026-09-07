@@ -11,6 +11,7 @@ const CATEGORIA_POR_BLOQUE: Record<string, string> = {
   podcast: 'podcast',
   video_contenido: 'video_contenido',
   guias: 'guias',
+  libro: 'libro',
 };
 
 interface CeldaPorVencer {
@@ -31,10 +32,11 @@ function diasHasta(dueDate: string): number {
 
 /**
  * Revisa todos los pasos con fecha límite (OVA/Podcast/Video de contenido:
- * "Creación de guión"; Guías: "Recepción por experto") que están por vencer
- * (o ya vencieron), todavía no están en 'terminado' y a los que no se les
- * avisó, y le avisa por correo al encargado de esa categoría. Se corre
- * periódicamente (ver index.ts) -- nunca lanza.
+ * "Creación de guión"; Guías: "Recepción por experto"; Libro: "Envío para
+ * ajustes de experto") que están por vencer (o ya vencieron), todavía no
+ * están en 'terminado' y a los que no se les avisó, y le avisa por correo al
+ * encargado de esa categoría. Se corre periódicamente (ver index.ts) --
+ * nunca lanza.
  */
 export async function revisarFechasLimite(): Promise<void> {
   try {
@@ -84,6 +86,14 @@ export async function revisarFechasLimite(): Promise<void> {
 
       const def = findStepDef(c.step_path);
       if (!def) continue;
+
+      // Un paso con StepDef.autoDueDate (fecha límite calculada sola, no
+      // escrita a mano) solo avisa una vez que esa fecha límite YA venció --
+      // a diferencia de los demás, que avisan con DIAS_AVISO de anticipación.
+      // Si no, avisarían casi de inmediato: su ventana entera son unos pocos
+      // días hábiles, siempre menor a DIAS_AVISO.
+      if (def.step.autoDueDate && diasHasta(c.due_date) > 0) continue;
+
       const { instance } = parseStepPath(c.step_path);
 
       await enviarAvisoFechaLimite({
