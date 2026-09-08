@@ -1,5 +1,5 @@
 interface Props {
-  titulo: string;
+  titulo: React.ReactNode;
   subtitulo?: string;
   volver?: React.ReactNode;
   children?: React.ReactNode;   // acciones a la derecha

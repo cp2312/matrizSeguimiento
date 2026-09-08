@@ -8,6 +8,7 @@ import { Campo } from '../components/ui/Campo';
 import { AreaTexto } from '../components/ui/AreaTexto';
 import { Select } from '../components/ui/Select';
 import { Modal } from '../components/ui/Modal';
+import { ModalConfirmar } from '../components/ui/ModalConfirmar';
 import { Alerta } from '../components/ui/Alerta';
 import { TituloPagina } from '../components/ui/TituloPagina';
 import { Cargando, Vacio } from '../components/ui/Estado';
@@ -150,19 +151,29 @@ export default function ListadoProgramas() {
               ))}
 
               {filtro === 'virtual' && (
-                <div className="flex items-center gap-1 ml-1 pl-2 border-l border-slate-200">
-                  <FiltroPildora activo={nivelFiltro === 'todos'} onClick={() => setNivelFiltro('todos')}>
-                    Todos
-                  </FiltroPildora>
-                  {NIVELES_PROGRAMA.map((n) => (
+                <div className="flex items-center gap-1.5 ml-1.5 pl-3 border-l border-slate-300">
+                  <span className="text-[10.5px] font-semibold text-slate-400 uppercase tracking-wide">
+                    Nivel
+                  </span>
+                  <div className="flex items-center gap-0.5 bg-slate-50 border border-slate-200 rounded-lg p-0.5">
                     <FiltroPildora
-                      key={n.valor}
-                      activo={nivelFiltro === n.valor}
-                      onClick={() => setNivelFiltro(n.valor)}
+                      tamano="chico" acento="cyan"
+                      activo={nivelFiltro === 'todos'}
+                      onClick={() => setNivelFiltro('todos')}
                     >
-                      {n.etiqueta}
+                      Todos
                     </FiltroPildora>
-                  ))}
+                    {NIVELES_PROGRAMA.map((n) => (
+                      <FiltroPildora
+                        key={n.valor}
+                        tamano="chico" acento="cyan"
+                        activo={nivelFiltro === n.valor}
+                        onClick={() => setNivelFiltro(n.valor)}
+                      >
+                        {n.etiqueta}
+                      </FiltroPildora>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -288,17 +299,27 @@ export default function ListadoProgramas() {
 }
 
 function FiltroPildora({
-  activo, onClick, children,
+  activo, onClick, children, tamano = 'normal', acento = 'slate',
 }: {
   activo: boolean;
   onClick: () => void;
   children: React.ReactNode;
+  /** 'chico' para un sub-filtro anidado (p. ej. nivel académico dentro de Virtual) */
+  tamano?: 'normal' | 'chico';
+  /** 'cyan' distingue visualmente un sub-filtro del filtro principal (slate) */
+  acento?: 'slate' | 'cyan';
 }) {
+  const dimensiones = tamano === 'chico' ? 'h-7 px-2.5 text-[12px]' : 'h-8 px-3 text-[13px]';
+  const activoClase = acento === 'cyan' ? 'bg-cyan-100 text-cyan-800' : 'bg-slate-100 text-slate-900';
+  const inactivoClase = acento === 'cyan'
+    ? 'text-slate-500 hover:text-cyan-800 hover:bg-white'
+    : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50';
+
   return (
     <button
       onClick={onClick}
-      className={`h-8 px-3 inline-flex items-center rounded-lg text-[13px] font-medium transition-colors ${
-        activo ? 'bg-slate-100 text-slate-900' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+      className={`${dimensiones} inline-flex items-center rounded-lg font-medium transition-colors ${
+        activo ? activoClase : inactivoClase
       }`}
     >
       {children}
@@ -324,8 +345,8 @@ function ModalPrograma({
   });
   const [error, setError] = useState('');
   const [enviando, setEnviando] = useState(false);
-  // Primer clic en "Guardar" arma la confirmación; el segundo (sobre "Sí,
-  // guardar") sí llama a la API. Cualquier edición vuelve a pedirla.
+  // El primer clic en "Guardar" abre el modal de "¿estás seguro?" (ver
+  // ModalConfirmar); solo confirmar ahí llama a la API.
   const [confirmando, setConfirmando] = useState(false);
 
   // Precarga los datos al abrir en modo edición
@@ -347,25 +368,21 @@ function ModalPrograma({
 
   function set<K extends keyof typeof form>(campo: K, valor: (typeof form)[K]) {
     setForm({ ...form, [campo]: valor });
-    setConfirmando(false);
   }
 
-  async function enviar(e: React.FormEvent) {
+  function enviar(e: React.FormEvent) {
     e.preventDefault();
 
     if (form.type === 'virtual' && !form.academicLevel) {
       return setError('Un programa virtual debe indicar si es de pregrado o posgrado');
     }
 
-    if (!confirmando) {
-      setError('');
-      setConfirmando(true);
-      return;
-    }
-
     setError('');
-    setEnviando(true);
+    setConfirmando(true);
+  }
 
+  async function confirmarGuardado() {
+    setEnviando(true);
     try {
       if (esEdicion) {
         await api.patch(`/programs/${programa!.id}`, form);
@@ -417,22 +434,29 @@ function ModalPrograma({
 
         <Alerta>{error}</Alerta>
 
-        {confirmando && (
-          <p className="text-[13px] text-slate-600 bg-slate-50 rounded-lg px-3 py-2">
-            ¿Confirmás {esEdicion ? 'guardar los cambios en' : 'crear'}{' '}
-            <strong>{form.name || (esEdicion ? 'este programa' : 'el nuevo programa')}</strong>?
-          </p>
-        )}
-
         <div className="flex gap-2 justify-end pt-1">
-          <Boton type="button" onClick={() => (confirmando ? setConfirmando(false) : onCerrar())}>
-            {confirmando ? 'Volver' : 'Cancelar'}
-          </Boton>
-          <Boton type="submit" variante="primario" disabled={enviando}>
-            {enviando ? 'Guardando…' : confirmando ? 'Sí, guardar' : esEdicion ? 'Guardar cambios' : 'Crear programa'}
+          <Boton type="button" onClick={onCerrar}>Cancelar</Boton>
+          <Boton type="submit" variante="primario">
+            {esEdicion ? 'Guardar cambios' : 'Crear programa'}
           </Boton>
         </div>
       </form>
+
+      <ModalConfirmar
+        abierto={confirmando}
+        titulo={esEdicion ? 'Confirmar cambios' : 'Confirmar creación'}
+        mensaje={
+          <>
+            ¿Confirmás {esEdicion ? 'guardar los cambios en' : 'crear'}{' '}
+            <strong>{form.name || (esEdicion ? 'este programa' : 'el nuevo programa')}</strong>?
+          </>
+        }
+        textoConfirmar={esEdicion ? 'Sí, guardar' : 'Sí, crear'}
+        enviando={enviando}
+        error={error}
+        onCancelar={() => setConfirmando(false)}
+        onConfirmar={confirmarGuardado}
+      />
     </Modal>
   );
 }

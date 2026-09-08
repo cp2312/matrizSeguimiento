@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { useParams, useSearchParams, Link } from 'react-router-dom';
+import { useParams, useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { useMatriz } from '../hooks/useMatriz';
 import { useFetch } from '../hooks/useFetch';
 import { api } from '../lib/api';
 import { Layout } from '../components/Layout';
 import { Alerta } from '../components/ui/Alerta';
 import { TituloPagina } from '../components/ui/TituloPagina';
+import { ModalConfirmar } from '../components/ui/ModalConfirmar';
 import { Cargando } from '../components/ui/Estado';
 import { Leyenda } from '../components/Leyenda';
 import { DocentesAsignatura } from '../components/DocentesAsignatura';
@@ -23,11 +24,28 @@ function IconoLapiz() {
   );
 }
 
+function IconoBasura() {
+  return (
+    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 6h18" />
+      <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+      <line x1="10" y1="11" x2="10" y2="17" />
+      <line x1="14" y1="11" x2="14" y2="17" />
+    </svg>
+  );
+}
+
 export default function Asignatura() {
   const { id } = useParams();
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const { datos, cargando, error, aplicarCelda, aplicarTeachers, recargar } = useMatriz(id);
   const [editando, setEditando] = useState(false);
+  const [eliminando, setEliminando] = useState(false);
+  const [borrando, setBorrando] = useState(false);
+  const [errorBorrado, setErrorBorrado] = useState('');
 
   // Hace falta el programa (no solo la asignatura) para saber si pide
   // modalidad o nombre del programa al editar -- mismo dato que ya usa
@@ -44,6 +62,19 @@ export default function Asignatura() {
   async function cambiarVideoPorDocente(checked: boolean) {
     await api.patch(`/subjects/${asignatura.id}`, { videosPorDocente: checked });
     recargar();
+  }
+
+  async function confirmarEliminar() {
+    setBorrando(true);
+    setErrorBorrado('');
+    try {
+      await api.del(`/subjects/${asignatura.id}`);
+      navigate(`/programas/${asignatura.program_id}`);
+    } catch (err: any) {
+      setErrorBorrado(err.message);
+    } finally {
+      setBorrando(false);
+    }
   }
 
   const subtitulo = [
@@ -77,6 +108,14 @@ export default function Asignatura() {
         >
           <IconoLapiz />
           Editar
+        </button>
+        <button
+          onClick={() => setEliminando(true)}
+          className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-[13px] text-slate-500
+                     hover:text-red-600 hover:bg-red-50 transition-colors"
+        >
+          <IconoBasura />
+          Eliminar
         </button>
       </TituloPagina>
 
@@ -112,6 +151,23 @@ export default function Asignatura() {
           onGuardada={() => { setEditando(false); recargar(); }}
         />
       )}
+
+      <ModalConfirmar
+        abierto={eliminando}
+        titulo="Eliminar asignatura"
+        mensaje={
+          <>
+            ¿Seguro que querés eliminar <strong>{asignatura.name}</strong>? Esto borra también
+            todas sus celdas e historial. La acción no se puede deshacer.
+          </>
+        }
+        textoConfirmar="Eliminar"
+        variante="peligro"
+        enviando={borrando}
+        error={errorBorrado}
+        onCancelar={() => setEliminando(false)}
+        onConfirmar={confirmarEliminar}
+      />
     </Layout>
   );
 }

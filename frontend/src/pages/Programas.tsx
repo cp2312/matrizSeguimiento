@@ -31,6 +31,39 @@ function IconoLupa({ className }: { className?: string }) {
   );
 }
 
+function IconoChevron({ direccion }: { direccion: 'izquierda' | 'derecha' }) {
+  return (
+    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points={direccion === 'izquierda' ? '15 6 9 12 15 18' : '9 6 15 12 9 18'} />
+    </svg>
+  );
+}
+
+/** Botón de flecha para pasar al programa anterior/siguiente en NavegacionProgramas */
+function BotonNavegarPrograma({
+  direccion, programa, onClick,
+}: {
+  direccion: 'izquierda' | 'derecha';
+  programa: Program | null;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!programa}
+      title={programa ? programa.name : undefined}
+      aria-label={direccion === 'izquierda' ? 'Programa anterior' : 'Programa siguiente'}
+      className="w-7 h-7 shrink-0 inline-flex items-center justify-center rounded-lg text-slate-400
+                 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-25 disabled:cursor-not-allowed
+                 disabled:hover:bg-transparent transition-colors"
+    >
+      <IconoChevron direccion={direccion} />
+    </button>
+  );
+}
+
 export default function Programa() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -39,6 +72,17 @@ export default function Programa() {
 
   const { datos: programa } = useFetch<Program>(`/programs/${id}`);
   const { datos: filas, cargando, error, recargar } = useFetch<FilaTablero[]>(`/programs/${id}/tablero`);
+
+  // Para las flechas "anterior/siguiente": mismo orden que el listado
+  // principal (alfabético, con archivados incluidos para que no se pierda
+  // el actual si justo se está viendo uno archivado).
+  const { datos: todosLosProgramas } = useFetch<Program[]>('/programs?archivados=true');
+  const indiceActual = todosLosProgramas?.findIndex((p) => p.id === Number(id)) ?? -1;
+  const programaAnterior = indiceActual > 0 ? todosLosProgramas![indiceActual - 1] : null;
+  const programaSiguiente =
+    indiceActual !== -1 && indiceActual < (todosLosProgramas?.length ?? 0) - 1
+      ? todosLosProgramas![indiceActual + 1]
+      : null;
 
   const filasFiltradas = (filas ?? []).filter((f) => normalizar(f.name).includes(normalizar(busqueda)));
 
@@ -65,7 +109,21 @@ export default function Programa() {
   return (
     <Layout ancho="completo">
       <TituloPagina
-        titulo={programa?.name ?? '…'}
+        titulo={
+          <span className="inline-flex items-center gap-1.5">
+            <BotonNavegarPrograma
+              direccion="izquierda"
+              programa={programaAnterior}
+              onClick={() => programaAnterior && navigate(`/programas/${programaAnterior.id}`)}
+            />
+            {programa?.name ?? '…'}
+            <BotonNavegarPrograma
+              direccion="derecha"
+              programa={programaSiguiente}
+              onClick={() => programaSiguiente && navigate(`/programas/${programaSiguiente.id}`)}
+            />
+          </span>
+        }
         subtitulo={`${total} ${total === 1 ? 'asignatura' : 'asignaturas'}`}
         volver={
           <Link to="/" className="text-[13px] text-slate-500 hover:text-slate-800">
@@ -161,7 +219,11 @@ export default function Programa() {
                           const estado = estadoDelBloque(a.estadosPorBloque[c.key] ?? []);
                           const e = ESTADOS[estado];
                           return (
-                            <td key={c.key} className="px-1 py-1.5">
+                            // El botón ocupa toda la celda (el padding vive en el botón, no
+                            // en el <td>) para que no haya un borde "muerto" alrededor de la
+                            // barra de color -- si no, un clic ahí caía en la fila entera y
+                            // mandaba a la asignatura completa en vez de abrir este apartado.
+                            <td key={c.key} className="p-0">
                               <button
                                 type="button"
                                 title={`${c.label}: ${e.label}`}
@@ -169,12 +231,16 @@ export default function Programa() {
                                   ev.stopPropagation();
                                   setCeldaAbierta({ subjectId: a.id, blockKey: c.key, blockLabel: c.label });
                                 }}
-                                className="h-5 w-full rounded transition-transform hover:scale-y-125 cursor-pointer"
-                                style={{
-                                  background: e.fondo,
-                                  border: e.borde ? '0.5px solid rgba(0,0,0,.12)' : 'none',
-                                }}
-                              />
+                                className="flex items-center w-full h-full px-1 py-1.5 cursor-pointer hover:bg-slate-100/70 transition-colors"
+                              >
+                                <span
+                                  className="h-5 w-full rounded transition-transform hover:scale-y-125"
+                                  style={{
+                                    background: e.fondo,
+                                    border: e.borde ? '0.5px solid rgba(0,0,0,.12)' : 'none',
+                                  }}
+                                />
+                              </button>
                             </td>
                           );
                         })}

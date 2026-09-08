@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api } from '../lib/api';
 import { Modal } from './ui/Modal';
+import { ModalConfirmar } from './ui/ModalConfirmar';
 import { Campo } from './ui/Campo';
 import { Select } from './ui/Select';
 import { Casilla } from './ui/Casilla';
@@ -51,8 +52,8 @@ export function ModalNuevaAsignatura({ abierto, programa, asignatura, onCerrar, 
   const [libroIgual, setLibroIgual] = useState(true);
   const [error, setError] = useState('');
   const [enviando, setEnviando] = useState(false);
-  // Primer clic en "Guardar" arma la confirmación; el segundo (sobre "Sí,
-  // guardar") sí llama a la API. Cualquier edición vuelve a pedirla.
+  // El primer clic en "Guardar" abre el modal de "¿estás seguro?" (ver
+  // ModalConfirmar); solo confirmar ahí llama a la API.
   const [confirmando, setConfirmando] = useState(false);
 
   // Precarga los datos al abrir en modo edición (o los reinicia si se vuelve a
@@ -83,20 +84,16 @@ export function ModalNuevaAsignatura({ abierto, programa, asignatura, onCerrar, 
   // virtual) en cambio pide el nombre del programa. Son mutuamente excluyentes.
   const pideModalidad = programa.type === 'hibrido';
   const pideNombrePrograma = programa.type === 'presencial';
-  const set = (campo: keyof typeof VACIO) => (e: React.ChangeEvent<any>) => {
+  const set = (campo: keyof typeof VACIO) => (e: React.ChangeEvent<any>) =>
     setForm({ ...form, [campo]: e.target.value });
-    setConfirmando(false);
-  };
 
-  async function enviar(e: React.FormEvent) {
+  function enviar(e: React.FormEvent) {
     e.preventDefault();
-
-    if (!confirmando) {
-      setConfirmando(true);
-      return;
-    }
-
     setError('');
+    setConfirmando(true);
+  }
+
+  async function confirmarGuardado() {
     setEnviando(true);
 
     try {
@@ -182,7 +179,7 @@ export function ModalNuevaAsignatura({ abierto, programa, asignatura, onCerrar, 
           <Casilla
             etiqueta="¿El nombre del programa y el libro es igual?"
             checked={libroIgual}
-            onChange={(e) => { setLibroIgual(e.target.checked); setConfirmando(false); }}
+            onChange={(e) => setLibroIgual(e.target.checked)}
           />
 
           {libroIgual && (
@@ -213,22 +210,29 @@ export function ModalNuevaAsignatura({ abierto, programa, asignatura, onCerrar, 
 
         <Alerta>{error}</Alerta>
 
-        {confirmando && (
-          <p className="text-[13px] text-slate-600 bg-slate-50 rounded-lg px-3 py-2">
-            ¿Confirmás {esEdicion ? 'guardar los cambios en' : 'crear la asignatura'}{' '}
-            <strong>{form.name || (esEdicion ? 'esta asignatura' : 'la nueva asignatura')}</strong>?
-          </p>
-        )}
-
         <div className="flex gap-2 justify-end pt-1">
-          <Boton type="button" onClick={() => (confirmando ? setConfirmando(false) : onCerrar())}>
-            {confirmando ? 'Volver' : 'Cancelar'}
-          </Boton>
-          <Boton type="submit" variante="primario" disabled={enviando}>
-            {enviando ? 'Guardando…' : confirmando ? 'Sí, guardar' : esEdicion ? 'Guardar cambios' : 'Crear asignatura'}
+          <Boton type="button" onClick={onCerrar}>Cancelar</Boton>
+          <Boton type="submit" variante="primario">
+            {esEdicion ? 'Guardar cambios' : 'Crear asignatura'}
           </Boton>
         </div>
       </form>
+
+      <ModalConfirmar
+        abierto={confirmando}
+        titulo={esEdicion ? 'Confirmar cambios' : 'Confirmar creación'}
+        mensaje={
+          <>
+            ¿Confirmás {esEdicion ? 'guardar los cambios en' : 'crear la asignatura'}{' '}
+            <strong>{form.name || (esEdicion ? 'esta asignatura' : 'la nueva asignatura')}</strong>?
+          </>
+        }
+        textoConfirmar={esEdicion ? 'Sí, guardar' : 'Sí, crear'}
+        enviando={enviando}
+        error={error}
+        onCancelar={() => setConfirmando(false)}
+        onConfirmar={confirmarGuardado}
+      />
     </Modal>
   );
 }

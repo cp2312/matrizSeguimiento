@@ -1,47 +1,42 @@
 import { useState } from 'react';
 import { Boton } from './Boton';
+import { ModalConfirmar } from './ModalConfirmar';
 
 interface Props {
-  /** Acción real, solo se ejecuta tras el segundo clic (el de "sí, continuar") */
+  /** Acción real, solo se ejecuta tras confirmar en el modal */
   onConfirmar: () => void | Promise<void>;
-  /** Corre antes de mostrar la confirmación (p. ej. validar campos); si devuelve
-   *  false, no se muestra el paso de "¿estás seguro?" -- deja que el llamador
-   *  muestre su propio error */
+  /** Corre antes de abrir el modal (p. ej. validar campos); si devuelve
+   *  false, no se abre -- deja que el llamador muestre su propio error */
   onValidar?: () => boolean;
   /** Texto normal del botón, antes de pedir confirmación (p. ej. "Guardar") */
   etiqueta: React.ReactNode;
-  /** Texto del botón una vez confirmando (p. ej. "Sí, guardar") */
+  /** Texto del botón de confirmar dentro del modal (p. ej. "Sí, guardar") */
   etiquetaConfirmar?: string;
-  /** Pregunta que se muestra al lado, p. ej. "¿Confirmás guardar estos cambios?" */
-  mensaje: string;
-  variante?: 'primario' | 'peligro' | 'secundario';
+  /** Título del modal de confirmación */
+  titulo?: string;
+  /** Pregunta que se muestra en el modal, p. ej. "¿Confirmás guardar estos cambios?" */
+  mensaje: React.ReactNode;
+  variante?: 'primario' | 'peligro';
   className?: string;
   disabled?: boolean;
-  /** Avisa al contenedor cuando se arma/desarma la confirmación, para que pueda
-   *  ocultar otros botones "Cancelar" propios y no tener dos a la vez en pantalla */
-  onConfirmandoChange?: (confirmando: boolean) => void;
 }
 
 /**
- * Botón que, al primer clic, se convierte en una franja "¿estás seguro?" con
- * Cancelar / Confirmar en vez de ejecutar la acción de una vez. Solo el
- * segundo clic (sobre "Sí, ...") llama a `onConfirmar`. Pensado para
- * reemplazar botones de guardar/quitar que antes actuaban en un solo clic.
+ * Botón que, en vez de ejecutar la acción de una vez, abre un modal real de
+ * "¿estás seguro?" (ver ModalConfirmar) -- solo confirmar ahí ejecuta
+ * `onConfirmar`. Pensado para reemplazar botones de guardar/quitar que antes
+ * actuaban en un solo clic.
  */
 export function BotonConfirmar({
-  onConfirmar, onValidar, etiqueta, etiquetaConfirmar = 'Confirmar',
-  mensaje, variante = 'primario', className = '', disabled, onConfirmandoChange,
+  onConfirmar, onValidar, etiqueta, etiquetaConfirmar = 'Confirmar', titulo = 'Confirmar',
+  mensaje, variante = 'primario', className = '', disabled,
 }: Props) {
   const [confirmando, setConfirmando] = useState(false);
   const [enviando, setEnviando] = useState(false);
+  const [error, setError] = useState('');
 
-  function cambiarConfirmando(valor: boolean) {
-    setConfirmando(valor);
-    onConfirmandoChange?.(valor);
-  }
-
-  if (!confirmando) {
-    return (
+  return (
+    <>
       <Boton
         type="button"
         variante={variante}
@@ -49,38 +44,35 @@ export function BotonConfirmar({
         className={className}
         onClick={() => {
           if (onValidar && !onValidar()) return;
-          cambiarConfirmando(true);
+          setError('');
+          setConfirmando(true);
         }}
       >
         {etiqueta}
       </Boton>
-    );
-  }
 
-  return (
-    <span className="inline-flex items-center gap-2 flex-wrap justify-end">
-      <span className="text-[11.5px] text-slate-500">{mensaje}</span>
-      <button
-        type="button"
-        onClick={() => cambiarConfirmando(false)}
-        className="text-[11.5px] text-slate-500 hover:text-slate-800 underline underline-offset-2"
-      >
-        Cancelar
-      </button>
-      <Boton
-        type="button"
+      <ModalConfirmar
+        abierto={confirmando}
+        titulo={titulo}
+        mensaje={mensaje}
+        textoConfirmar={etiquetaConfirmar}
         variante={variante}
-        disabled={enviando}
-        className={`h-7 px-2.5 text-[11.5px] ${className}`}
-        onClick={async () => {
+        enviando={enviando}
+        error={error}
+        onCancelar={() => setConfirmando(false)}
+        onConfirmar={async () => {
           setEnviando(true);
-          await onConfirmar();
-          setEnviando(false);
-          cambiarConfirmando(false);
+          setError('');
+          try {
+            await onConfirmar();
+            setConfirmando(false);
+          } catch (err: any) {
+            setError(err.message ?? 'Ocurrió un error, intenta de nuevo');
+          } finally {
+            setEnviando(false);
+          }
         }}
-      >
-        {enviando ? 'Guardando…' : etiquetaConfirmar}
-      </Boton>
-    </span>
+      />
+    </>
   );
 }
