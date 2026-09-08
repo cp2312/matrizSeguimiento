@@ -59,11 +59,11 @@ export function BotonConfirmar({
 
   return (
     <span className="inline-flex items-center gap-2 flex-wrap justify-end">
-      <span className="text-[11.5px] text-slate-500">{mensaje}</span>
+      <span className="text-[11.5px] text-slate-500 dark:text-slate-400">{mensaje}</span>
       <button
         type="button"
         onClick={() => cambiarConfirmando(false)}
-        className="text-[11.5px] text-slate-500 hover:text-slate-800 underline underline-offset-2"
+        className="text-[11.5px] text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 underline underline-offset-2"
       >
         Cancelar
       </button>

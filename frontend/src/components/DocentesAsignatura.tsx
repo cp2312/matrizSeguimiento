@@ -70,22 +70,22 @@ export function DocentesAsignatura({ subjectId, teachers, onCambiados, onCeldaAc
   }
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-4">
-      <p className="text-sm font-medium text-slate-800 mb-2.5">Docentes asignados</p>
+    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4">
+      <p className="text-sm font-medium text-slate-800 dark:text-slate-100 mb-2.5">Docentes asignados</p>
 
       <div className="space-y-1.5 mb-3">
         {teachers.length === 0 && (
-          <p className="text-[12px] text-slate-400">Aún no hay docentes asignados.</p>
+          <p className="text-[12px] text-slate-400 dark:text-slate-500">Aún no hay docentes asignados.</p>
         )}
         {teachers.map((t) => (
-          <div key={t.id} className="flex items-center justify-between bg-slate-50 rounded-md px-2.5 py-1.5 gap-2">
+          <div key={t.id} className="flex items-center justify-between bg-slate-50 dark:bg-slate-800/60 rounded-md px-2.5 py-1.5 gap-2">
             {confirmandoQuitar === t.id ? (
               <>
-                <span className="text-[11.5px] text-slate-500">¿Quitar a {t.full_name}?</span>
+                <span className="text-[11.5px] text-slate-500 dark:text-slate-400">¿Quitar a {t.full_name}?</span>
                 <span className="flex items-center gap-2 shrink-0">
                   <button
                     onClick={() => setConfirmandoQuitar(null)}
-                    className="text-[11.5px] text-slate-500 hover:text-slate-800 underline underline-offset-2"
+                    className="text-[11.5px] text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 underline underline-offset-2"
                   >
                     Cancelar
                   </button>
@@ -100,7 +100,7 @@ export function DocentesAsignatura({ subjectId, teachers, onCambiados, onCeldaAc
               </>
             ) : (
               <>
-                <span className="text-[13px] text-slate-700">{t.full_name}</span>
+                <span className="text-[13px] text-slate-700 dark:text-slate-200">{t.full_name}</span>
                 <button
                   onClick={() => setConfirmandoQuitar(t.id)}
                   disabled={enviando}
@@ -121,7 +121,7 @@ export function DocentesAsignatura({ subjectId, teachers, onCambiados, onCeldaAc
           onChange={(e) => setNombreNuevo(e.target.value)}
           placeholder="Nombre del docente"
           disabled={enviando}
-          className="flex-1 h-9 px-3 rounded-lg border border-slate-300 text-[13px]
+          className="flex-1 h-9 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 dark:text-slate-100 text-[13px]
                      outline-none focus:ring-2 focus:ring-slate-400"
         />
         <Boton type="submit" disabled={enviando || !nombreNuevo.trim()} className="h-9 px-3 text-[12px] shrink-0">

@@ -108,6 +108,8 @@ CREATE TABLE users (
   initials      TEXT        NOT NULL UNIQUE,
   role          user_role   NOT NULL DEFAULT 'usuario',
   active        BOOLEAN     NOT NULL DEFAULT TRUE,
+  -- Foto de perfil como data URL base64 (data:image/...). NULL = sin foto.
+  avatar_url    TEXT,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
 

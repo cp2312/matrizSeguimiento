@@ -1,5 +1,5 @@
-import { Fragment, useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useState } from 'react';
+import { useParams, Link } from 'react-router-dom';
 import { useFetch } from '../hooks/useFetch';
 import { useMatriz } from '../hooks/useMatriz';
 import { api } from '../lib/api';
@@ -33,14 +33,22 @@ function IconoLupa({ className }: { className?: string }) {
 
 export default function Programa() {
   const { id } = useParams();
-  const navigate = useNavigate();
-  const [modalAbierto, setModalAbierto] = useState(false);
+  const [creando, setCreando] = useState(false);
+  const [editando, setEditando] = useState<FilaTablero | null>(null);
+  const [eliminando, setEliminando] = useState<FilaTablero | null>(null);
   const [busqueda, setBusqueda] = useState('');
 
   const { datos: programa } = useFetch<Program>(`/programs/${id}`);
   const { datos: filas, cargando, error, recargar } = useFetch<FilaTablero[]>(`/programs/${id}/tablero`);
 
   const filasFiltradas = (filas ?? []).filter((f) => normalizar(f.name).includes(normalizar(busqueda)));
+
+  async function eliminarAsignatura() {
+    if (!eliminando) return;
+    await api.del(`/subjects/${eliminando.id}`);
+    setEliminando(null);
+    recargar();
+  }
 
   // Casilla del tablero en la que se hizo clic: carga la matriz de esa asignatura bajo demanda
   const [celdaAbierta, setCeldaAbierta] = useState<{ subjectId: number; blockKey: string; blockLabel: string } | null>(null);
@@ -68,12 +76,12 @@ export default function Programa() {
         titulo={programa?.name ?? '…'}
         subtitulo={`${total} ${total === 1 ? 'asignatura' : 'asignaturas'}`}
         volver={
-          <Link to="/" className="text-[13px] text-slate-500 hover:text-slate-800">
+          <Link to="/" className="text-[13px] text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100">
             ← Programas
           </Link>
         }
       >
-        <Boton variante="primario" onClick={() => setModalAbierto(true)}>
+        <Boton variante="primario" onClick={() => setCreando(true)}>
           Nueva asignatura
         </Boton>
       </TituloPagina>
@@ -84,22 +92,24 @@ export default function Programa() {
 
       {!cargando && !error && total === 0 && (
         <Vacio mensaje="Este programa aún no tiene asignaturas.">
-          <Boton variante="primario" onClick={() => setModalAbierto(true)}>
+          <Boton variante="primario" onClick={() => setCreando(true)}>
             Crear la primera
           </Boton>
         </Vacio>
       )}
 
+      <Leyenda />
+
       {!cargando && total > 0 && (
         <>
-          <div className="relative mb-4 max-w-xs">
+          <div className="relative mt-4 mb-4 max-w-xs">
             <IconoLupa className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
             <input
               type="text"
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
               placeholder="Buscar asignatura…"
-              className="w-full h-9 pl-9 pr-3 rounded-lg border border-slate-200 bg-white text-[13px]
+              className="w-full h-9 pl-9 pr-3 rounded-lg border border-slate-200 bg-white dark:bg-slate-900 dark:border-slate-700 dark:text-slate-100 text-[13px]
                          outline-none transition-colors focus:ring-2 focus:ring-slate-400"
             />
           </div>
@@ -109,96 +119,46 @@ export default function Programa() {
               <Boton onClick={() => setBusqueda('')}>Limpiar búsqueda</Boton>
             </Vacio>
           ) : (
-          <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto">
-            <table className="w-full text-xs table-fixed" style={{ minWidth: 1650 }}>
-              <thead>
-                <tr className="bg-slate-50 text-slate-500">
-                  <th className="text-left font-normal px-4 py-2.5 align-bottom sticky left-0 bg-slate-50 w-[220px]">
-                    Asignatura
-                  </th>
-                  <th className="font-normal px-1 py-2.5 align-bottom w-9">Cr</th>
-                  {/* sin ancho fijo: se reparten el espacio sobrante en partes iguales.
-                      break-words: las palabras largas se parten dentro de su propia
-                      columna en vez de desbordarse sobre las columnas vecinas. */}
-                  {COLUMNAS_TABLERO.map((c) => (
-                    <th key={c.key} className="font-normal align-bottom px-1 py-2 text-center text-[10.5px] leading-tight break-words">
-                      {c.label}
-                    </th>
+          <div className="space-y-8">
+            {Object.entries(porSemestre).map(([semestre, asignaturas]) => (
+              <section key={semestre}>
+                <div className="flex items-center gap-3 mb-3">
+                  <h2 className="text-[15px] font-semibold text-slate-800 dark:text-slate-100 tracking-tight">
+                    {semestre}
+                  </h2>
+                  <span className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
+                  <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                    {asignaturas.length} {asignaturas.length === 1 ? 'asignatura' : 'asignaturas'}
+                  </span>
+                </div>
+
+                <div className="space-y-4">
+                  {asignaturas.map((a) => (
+                    <TarjetaAsignatura
+                      key={a.id}
+                      asignatura={a}
+                      onAbrirBloque={(bloque) =>
+                        setCeldaAbierta({ subjectId: a.id, blockKey: bloque.key, blockLabel: bloque.label })
+                      }
+                      onEditar={() => setEditando(a)}
+                      onEliminar={() => setEliminando(a)}
+                    />
                   ))}
-                  <th className="text-right font-normal px-4 py-2.5 align-bottom w-14">%</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {Object.entries(porSemestre).map(([semestre, asignaturas]) => (
-                  <Fragment key={semestre}>
-                    <tr>
-                      <td
-                        colSpan={COLUMNAS_TABLERO.length + 3}
-                        className="bg-slate-50 px-4 py-1.5 text-[11px] text-slate-400 border-t border-slate-100"
-                      >
-                        {semestre}
-                      </td>
-                    </tr>
-
-                    {asignaturas.map((a) => (
-                      <tr
-                        key={a.id}
-                        onClick={() => navigate(`/asignaturas/${a.id}`)}
-                        className="border-t border-slate-100 hover:bg-slate-50 cursor-pointer"
-                      >
-                        <td className="px-4 py-2 sticky left-0 bg-white text-slate-800">
-                          {a.name}
-                          {a.modality && (
-                            <span className="ml-1.5 text-[10px] text-slate-400">
-                              {a.modality === 'virtual' ? 'V' : 'P'}
-                            </span>
-                          )}
-                        </td>
-                        <td className="text-center text-slate-500">{a.credits}</td>
-
-                        {COLUMNAS_TABLERO.map((c) => {
-                          const estado = estadoDelBloque(a.estadosPorBloque[c.key] ?? []);
-                          const e = ESTADOS[estado];
-                          return (
-                            <td key={c.key} className="px-1 py-1.5">
-                              <button
-                                type="button"
-                                title={`${c.label}: ${e.label}`}
-                                onClick={(ev) => {
-                                  ev.stopPropagation();
-                                  setCeldaAbierta({ subjectId: a.id, blockKey: c.key, blockLabel: c.label });
-                                }}
-                                className="h-5 w-full rounded transition-transform hover:scale-y-125 cursor-pointer"
-                                style={{
-                                  background: e.fondo,
-                                  border: e.borde ? '0.5px solid rgba(0,0,0,.12)' : 'none',
-                                }}
-                              />
-                            </td>
-                          );
-                        })}
-
-                        <td className="text-right px-4 text-slate-500">{a.avance}%</td>
-                      </tr>
-                    ))}
-                  </Fragment>
-                ))}
-              </tbody>
-            </table>
+                </div>
+              </section>
+            ))}
           </div>
           )}
-
-          <Leyenda />
         </>
       )}
 
       {programa && (
         <ModalNuevaAsignatura
-          abierto={modalAbierto}
+          abierto={creando || !!editando}
           programa={programa}
-          onCerrar={() => setModalAbierto(false)}
-          onGuardada={() => { setModalAbierto(false); recargar(); }}
+          asignatura={editando}
+          onCerrar={() => { setCreando(false); setEditando(null); }}
+          onGuardada={() => { setCreando(false); setEditando(null); recargar(); }}
         />
       )}
 
@@ -225,6 +185,161 @@ export default function Programa() {
           onRecargar={recargarModal}
         />
       )}
+
+      {eliminando && (
+        <div className="fixed inset-0 z-50 bg-black/45 flex items-start justify-center p-4 pt-16 overflow-y-auto"
+             onClick={() => setEliminando(null)}>
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl p-6"
+               onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-base font-medium text-slate-800 dark:text-slate-100">
+              Eliminar asignatura
+            </h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
+              ¿Eliminar <strong className="text-slate-800 dark:text-slate-100">{eliminando.name}</strong>?
+              Esta acción quita la asignatura y todo su avance.
+            </p>
+            <div className="mt-5 flex gap-2 justify-end">
+              <Boton type="button" onClick={() => setEliminando(null)}>Cancelar</Boton>
+              <Boton
+                type="button"
+                variante="peligro"
+                onClick={async () => {
+                  await eliminarAsignatura();
+                  setEliminando(null);
+                }}
+              >
+                Eliminar
+              </Boton>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
+  );
+}
+
+/** Card de asignatura: encabezado con nombre + avance y la grilla de bloques.
+ *  Cada bloque es un chip clicable con el color del estado del apartado. */
+function TarjetaAsignatura({
+  asignatura,
+  onAbrirBloque,
+  onEditar,
+  onEliminar,
+}: {
+  asignatura: FilaTablero;
+  onAbrirBloque: (bloque: { key: string; label: string }) => void;
+  onEditar: () => void;
+  onEliminar: () => void;
+}) {
+  const { id, name, credits, modality, avance } = asignatura;
+
+  return (
+    <article className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800
+                        rounded-2xl shadow-sm overflow-hidden">
+      <header className="flex items-center gap-3 px-5 py-4 bg-slate-50/60 dark:bg-slate-800/40">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <Link
+              to={`/asignaturas/${id}`}
+              className="text-[15px] font-semibold text-slate-900 dark:text-slate-100 tracking-tight truncate
+                         hover:text-marca-600 dark:hover:text-marca-400 transition-colors"
+            >
+              {name}
+            </Link>
+            {modality && (
+              <span className={`shrink-0 inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                modality === 'virtual'
+                  ? 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300'
+                  : 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300'
+              }`}>
+                {modality === 'virtual' ? 'Virtual' : 'Presencial'}
+              </span>
+            )}
+          </div>
+          <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">
+            {credits} {credits === 1 ? 'crédito' : 'créditos'}
+          </p>
+        </div>
+
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            type="button"
+            onClick={onEditar}
+            title="Editar asignatura"
+            className="w-8 h-8 grid place-items-center rounded-lg text-slate-400
+                       hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-200/70
+                       dark:hover:bg-white/10 transition-colors"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            onClick={onEliminar}
+            title="Eliminar asignatura"
+            className="w-8 h-8 grid place-items-center rounded-lg text-slate-400
+                       hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50
+                       dark:hover:bg-red-500/10 transition-colors"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 6h18" />
+              <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+              <line x1="10" y1="11" x2="10" y2="17" />
+              <line x1="14" y1="11" x2="14" y2="17" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="shrink-0 text-right w-40 border-l border-slate-200 dark:border-slate-700 pl-4">
+          <div className="flex items-baseline justify-end gap-2">
+            <span className="text-[11px] text-slate-400 dark:text-slate-500 font-medium">Avance</span>
+            <span className="text-lg font-bold tabular-nums text-slate-800 dark:text-slate-100 leading-none">
+              {avance}%
+            </span>
+          </div>
+          <div className="mt-1.5 h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-marca-500 dark:bg-marca-400 transition-all"
+              style={{ width: `${avance}%` }}
+            />
+          </div>
+        </div>
+      </header>
+
+      <div className="px-5 py-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5">
+        {COLUMNAS_TABLERO.map((c) => {
+          const estado = estadoDelBloque(asignatura.estadosPorBloque[c.key] ?? []);
+          const e = ESTADOS[estado];
+          return (
+            <button
+              key={c.key}
+              type="button"
+              title={`${c.label}: ${e.label}`}
+              onClick={() => onAbrirBloque({ key: c.key, label: c.label })}
+              className="group flex items-center gap-2 rounded-lg px-2.5 py-2 text-left
+                         transition-colors hover:ring-2 hover:ring-black/10
+                         dark:hover:ring-white/20 cursor-pointer"
+              style={{
+                background: e.fondo,
+                color: e.texto,
+                border: e.borde ? '0.5px solid rgba(0,0,0,.12)' : 'none',
+              }}
+            >
+              <span
+                className="w-2.5 h-2.5 rounded-full shrink-0 transition-transform group-hover:scale-110"
+                style={{ background: e.texto, opacity: 0.75 }}
+              />
+              <span className="text-[11.5px] font-medium leading-tight truncate">
+                {c.label}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </article>
   );
 }

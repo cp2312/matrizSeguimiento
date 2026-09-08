@@ -35,13 +35,13 @@ export function Modal({
       onClick={onCerrar}
     >
       <div
-        className={`w-full ${ANCHOS[ancho]} bg-white rounded-2xl p-6`}
+        className={`w-full ${ANCHOS[ancho]} bg-white dark:bg-slate-900 rounded-2xl p-6`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-base font-medium text-slate-800">{titulo}</h2>
-            {subtitulo && <p className="text-xs text-slate-500 mt-0.5 mb-4">{subtitulo}</p>}
+            <h2 className="text-base font-medium text-slate-800 dark:text-slate-100">{titulo}</h2>
+            {subtitulo && <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 mb-4">{subtitulo}</p>}
           </div>
           {accionesTitulo}
         </div>

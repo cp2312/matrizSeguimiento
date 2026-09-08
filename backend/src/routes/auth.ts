@@ -50,6 +50,7 @@ authRouter.post('/login', async (req, res) => {
     initials: usuario.initials,
     role: usuario.role,
     full_name: usuario.full_name,
+    avatar_url: usuario.avatar_url ?? null,
   };
 
   const { token: jwtToken, expiresIn } = firmarToken(datos);
@@ -68,6 +69,7 @@ authRouter.post('/refresh', requireAuth, (req, res) => {
     initials: req.user!.initials,
     role: req.user!.role,
     full_name: req.user!.full_name,
+    avatar_url: req.user!.avatar_url ?? null,
   };
   const { token: jwtToken, expiresIn } = firmarToken(datos);
   res.json({ token: jwtToken, expiresIn });
@@ -92,6 +94,39 @@ authRouter.post('/cambiar-password', requireAuth, async (req, res) => {
   await query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, req.user!.id]);
 
   res.json({ ok: true });
+});
+
+
+// Foto de perfil: se guarda como data URL base64. NULL la quita.
+const AVATAR_MAX_BYTES = 3 * 1024 * 1024; // 3 MB aprox. en base64
+
+authRouter.patch('/avatar', requireAuth, async (req, res) => {
+  const { avatar } = req.body;
+
+  if (avatar !== null && avatar !== undefined) {
+    if (typeof avatar !== 'string') {
+      return res.status(400).json({ error: 'Foto de perfil no válida' });
+    }
+
+    const mime = /^data:image\/(png|jpeg|jpg|webp|gif);base64,/.exec(avatar);
+    if (!mime) {
+      return res.status(400).json({ error: 'La foto debe ser una imagen (PNG, JPG o WebP)' });
+    }
+
+    if (avatar.length > AVATAR_MAX_BYTES) {
+      return res.status(400).json({ error: 'La foto es muy pesada (máximo 3 MB)' });
+    }
+  }
+
+  const avatarFinal = avatar ?? null;
+
+  const usuario = await queryOne(
+    `UPDATE users SET avatar_url = $1, updated_at = now() WHERE id = $2
+     RETURNING id, full_name, email, initials, role, active, avatar_url`,
+    [avatarFinal, req.user!.id]
+  );
+
+  res.json({ ok: true, usuario: usuario!.avatar_url ?? null });
 });
 
 
@@ -185,7 +220,7 @@ authRouter.post('/restablecer-password', async (req, res) => {
 
 authRouter.get('/usuarios', requireAuth, requireAdmin, async (_req, res) => {
   const usuarios = await query(
-    `SELECT id, full_name, email, initials, role, active, created_at
+    `SELECT id, full_name, email, initials, role, active, avatar_url, created_at
      FROM users ORDER BY active DESC, full_name`
   );
   res.json(usuarios);
@@ -208,7 +243,7 @@ authRouter.post('/usuarios', requireAuth, requireAdmin, async (req, res) => {
     const usuario = await queryOne(
       `INSERT INTO users (full_name, email, password_hash, initials, role)
        VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, full_name, email, initials, role, active, created_at`,
+       RETURNING id, full_name, email, initials, role, active, avatar_url, created_at`,
       [
         fullName.trim(),
         email.trim().toLowerCase(),
@@ -251,7 +286,7 @@ authRouter.patch('/usuarios/:id', requireAuth, requireAdmin, async (req, res) =>
   const usuario = await queryOne(
     `UPDATE users SET full_name=$1, initials=$2, role=$3, active=$4, password_hash=$5
      WHERE id=$6
-     RETURNING id, full_name, email, initials, role, active`,
+     RETURNING id, full_name, email, initials, role, active, avatar_url`,
     [
       fullName?.trim() ?? existente.full_name,
       initials?.trim().toUpperCase() ?? existente.initials,

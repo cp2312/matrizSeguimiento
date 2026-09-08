@@ -47,9 +47,9 @@ export function ApartadosAsignatura({
             key={clave}
             type="button"
             onClick={() => setApartado(clave)}
-            className="flex items-center gap-2.5 px-3.5 h-11 rounded-lg border border-dashed border-slate-300
-                       text-slate-400 text-[13px] text-left transition-colors
-                       hover:border-slate-400 hover:text-slate-600 hover:bg-slate-50"
+            className="flex items-center gap-2.5 px-3.5 h-11 rounded-lg border border-dashed border-slate-300 dark:border-slate-700
+                       text-slate-400 dark:text-slate-500 text-[13px] text-left transition-colors
+                       hover:border-slate-400 hover:text-slate-600 dark:hover:text-slate-300 dark:hover:bg-white/5 hover:bg-slate-50"
           >
             + Agregar {etiqueta}
           </button>

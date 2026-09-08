@@ -7,6 +7,7 @@ export interface Usuario {
   full_name: string;
   initials: string;
   role: 'usuario' | 'administrador';
+  avatar_url: string | null;
 }
 
 interface Contexto {
@@ -14,6 +15,8 @@ interface Contexto {
   cargando: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
+  /** Actualiza la foto de perfil del usuario en el estado (y devuelve la nueva URL o null) */
+  actualizarAvatar: (avatar: string | null) => Promise<string | null>;
 }
 
 const AuthContexto = createContext<Contexto>(null!);
@@ -46,8 +49,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     location.href = '/login';
   }
 
+  async function actualizarAvatar(avatar: string | null): Promise<string | null> {
+    const res = await api.patch<{ ok: boolean; usuario: string | null }>('/auth/avatar', { avatar });
+    setUsuario((u) => (u ? { ...u, avatar_url: res.usuario } : u));
+    return res.usuario;
+  }
+
   return (
-    <AuthContexto.Provider value={{ usuario, cargando, login, logout }}>
+    <AuthContexto.Provider value={{ usuario, cargando, login, logout, actualizarAvatar }}>
       {children}
     </AuthContexto.Provider>
   );

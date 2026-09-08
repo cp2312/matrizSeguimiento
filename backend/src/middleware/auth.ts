@@ -11,6 +11,7 @@ export interface AuthUser {
   initials: string;
   role: 'usuario' | 'administrador';
   full_name: string;
+  avatar_url: string | null;
 }
 
 // Extiende el tipo Request de Express para incluir el usuario
@@ -45,7 +46,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
     
     const usuario = await queryOne<User>(
-      `SELECT id, full_name, initials, role, active FROM users WHERE id = $1`,
+      `SELECT id, full_name, initials, role, active, avatar_url FROM users WHERE id = $1`,
       [payload.sub]
     );
 
@@ -58,6 +59,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       initials: usuario.initials,
       role: usuario.role,
       full_name: usuario.full_name,
+      avatar_url: usuario.avatar_url ?? null,
     };
 
     next();

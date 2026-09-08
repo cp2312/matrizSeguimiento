@@ -5,8 +5,8 @@ interface Props {
 }
 
 const TIPOS = {
-  error: 'text-red-600',
-  info: 'text-slate-600',
+  error: 'text-red-600 dark:text-red-400',
+  info: 'text-slate-600 dark:text-slate-300',
 };
 
 export function Alerta({ tipo = 'error', centrado = false, children }: Props) {

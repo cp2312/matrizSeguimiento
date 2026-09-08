@@ -34,14 +34,14 @@ export default function OlvidoPassword() {
   return (
     <div className="login-fondo relative min-h-screen flex items-center justify-center p-6 overflow-hidden">
       <img
-        src="/logo-usta1.png"
+        src="https://campusvirtual.santototunja.edu.co/assets/Copia-de-FInal-Logo-campusprueba2-2-1-scaled-CAabIrYv.png"
         alt=""
         aria-hidden="true"
         className="login-marca-agua pointer-events-none select-none absolute -right-28 -bottom-28 w-[620px] max-w-none"
       />
 
-      <Tarjeta className="login-card relative z-10 w-full max-w-md border border-slate-300">
-        <div className="h-1.5 bg-teal-600" />
+      <Tarjeta className="login-card relative z-10 w-full max-w-md border border-slate-300 dark:border-slate-700">
+        <div className="h-1.5 bg-marca-600 dark:bg-marca-500" />
         <div className="p-10 sm:p-12">
 
           <div className="mb-8">
@@ -50,11 +50,11 @@ export default function OlvidoPassword() {
 
           {enviado ? (
             <>
-              <h1 className="text-xl font-semibold text-slate-800 text-center mb-1.5">
+              <h1 className="text-xl font-semibold text-slate-800 dark:text-slate-100 text-center mb-1.5">
                 Revisa tu correo
               </h1>
-              <p className="text-sm text-slate-500 text-center mb-8">
-                Si <span className="font-medium text-slate-600">{email}</span> tiene una cuenta,
+              <p className="text-sm text-slate-500 dark:text-slate-400 text-center mb-8">
+                Si <span className="font-medium text-slate-600 dark:text-slate-300">{email}</span> tiene una cuenta,
                 te enviamos un enlace para restablecer la contraseña. Vence en 1 hora.
               </p>
               <Link to="/login">
@@ -65,10 +65,10 @@ export default function OlvidoPassword() {
             </>
           ) : (
             <form onSubmit={enviar}>
-              <h1 className="text-xl font-semibold text-slate-800 text-center mb-1.5">
+              <h1 className="text-xl font-semibold text-slate-800 dark:text-slate-100 text-center mb-1.5">
                 ¿Olvidó su contraseña?
               </h1>
-              <p className="text-sm text-slate-500 text-center mb-8">
+              <p className="text-sm text-slate-500 dark:text-slate-400 text-center mb-8">
                 Ingrese su correo y le enviaremos un enlace para restablecerla
               </p>
 
@@ -98,8 +98,8 @@ export default function OlvidoPassword() {
                 {enviando ? 'Enviando…' : 'Enviar enlace'}
               </Boton>
 
-              <p className="mt-5 text-xs text-slate-500 text-center">
-                <Link to="/login" className="hover:text-slate-700 underline underline-offset-2">
+              <p className="mt-5 text-xs text-slate-500 dark:text-slate-400 text-center">
+                <Link to="/login" className="hover:text-slate-700 dark:hover:text-slate-200 underline underline-offset-2">
                   Volver a iniciar sesión
                 </Link>
               </p>

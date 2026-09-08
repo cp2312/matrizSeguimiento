@@ -1,7 +1,13 @@
-/* Pantalla de inicio de sesión — detalles que Tailwind no cubre bien */
+/* Pantallas de autenticación (olvido/restablecer contraseña) */
 
-/* Entrada sutil de la tarjeta, con un borde más suave y una sombra
-   con más profundidad que el shadow-sm por defecto */
+.login-fondo {
+  background-color: #fafafa;
+}
+
+.dark .login-fondo {
+  background-color: #0a0a0a;
+}
+
 .login-card {
   animation: login-card-in 0.35s ease-out;
   box-shadow:
@@ -10,8 +16,10 @@
     0 32px 64px -24px rgba(15, 23, 42, 0.20);
 }
 
-/* Sello institucional como marca de agua de fondo: grande, muy tenue,
-   apenas asomando detrás de la tarjeta */
+.dark .login-card {
+  box-shadow: 0 12px 40px -12px rgba(0, 0, 0, 0.6);
+}
+
 .login-marca-agua {
   opacity: 0.05;
   filter: grayscale(1);
@@ -26,11 +34,6 @@
     opacity: 1;
     transform: translateY(0);
   }
-}
-
-/* Fondo con un leve degradado radial, en vez de un gris plano */
-.login-fondo {
-  background: radial-gradient(circle at 50% 0%, #f8fafc 0%, #f1f5f9 60%, #eef2f7 100%);
 }
 
 @media (prefers-reduced-motion: reduce) {

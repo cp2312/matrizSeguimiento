@@ -154,8 +154,8 @@ export function ModalNuevaAsignatura({ abierto, programa, asignatura, onCerrar, 
         </div>
 
         {(pideModalidad || pideNombrePrograma) && (
-          <div className="bg-teal-50 rounded-lg p-3">
-            <p className="text-[11px] text-teal-700 mb-3">
+          <div className="bg-teal-50 dark:bg-teal-950/40 rounded-lg p-3">
+            <p className="text-[11px] text-teal-700 dark:text-teal-300 mb-3">
               {pideNombrePrograma ? 'Este programa es presencial con asignatura virtual' : 'Este programa es híbrido'}
             </p>
             <div className="flex flex-wrap gap-3">
@@ -199,8 +199,8 @@ export function ModalNuevaAsignatura({ abierto, programa, asignatura, onCerrar, 
           onChange={set('generalComment')}
         />
 
-        <div className="bg-slate-50 rounded-lg p-3">
-          <p className="text-[11px] text-slate-500 leading-relaxed">
+        <div className="bg-slate-50 dark:bg-slate-800/60 rounded-lg p-3">
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
             Con {creditos} {creditos === 1 ? 'crédito' : 'créditos'} corresponden {creditos}{' '}
             {creditos === 1 ? 'OVA' : 'OVAs'}, {creditos} {creditos === 1 ? 'video' : 'videos'} de
             contenido, {creditos} {creditos === 1 ? 'guía' : 'guías'} y 2 infografías.
@@ -214,7 +214,7 @@ export function ModalNuevaAsignatura({ abierto, programa, asignatura, onCerrar, 
         <Alerta>{error}</Alerta>
 
         {confirmando && (
-          <p className="text-[13px] text-slate-600 bg-slate-50 rounded-lg px-3 py-2">
+          <p className="text-[13px] text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 rounded-lg px-3 py-2">
             ¿Confirmás {esEdicion ? 'guardar los cambios en' : 'crear la asignatura'}{' '}
             <strong>{form.name || (esEdicion ? 'esta asignatura' : 'la nueva asignatura')}</strong>?
           </p>
