@@ -105,7 +105,11 @@ CREATE TABLE users (
   full_name     TEXT        NOT NULL,
   email         TEXT        NOT NULL UNIQUE,
   password_hash TEXT        NOT NULL,
-  initials      TEXT        NOT NULL UNIQUE,
+  -- No es UNIQUE a propósito: dos personas distintas pueden compartir
+  -- iniciales (p. ej. dos "JM"). Lo que sí identifica a cada quien sin
+  -- ambigüedad es el id (users.id / matrix_cells.updated_by) -- initials es
+  -- solo lo que se estampa en pantalla en cada paso del proceso.
+  initials      TEXT        NOT NULL,
   role          user_role   NOT NULL DEFAULT 'usuario',
   active        BOOLEAN     NOT NULL DEFAULT TRUE,
   -- Foto de perfil como data URL base64 (data:image/...). NULL = sin foto.

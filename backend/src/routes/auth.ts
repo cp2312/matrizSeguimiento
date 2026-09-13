@@ -256,7 +256,7 @@ authRouter.post('/usuarios', requireAuth, requireAdmin, async (req, res) => {
     res.status(201).json(usuario);
   } catch (err: any) {
     if (err.code === '23505') {
-      return res.status(409).json({ error: 'Ese correo o esas iniciales ya están en uso' });
+      return res.status(409).json({ error: 'Ese correo ya está en uso' });
     }
     if (err.code === '23514') {
       return res.status(400).json({ error: 'Las iniciales deben ser 2 a 4 letras mayúsculas' });

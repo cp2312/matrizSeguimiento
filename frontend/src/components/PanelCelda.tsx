@@ -46,9 +46,6 @@ function DocentesContrato({ subjectId, teachers, onCambiados, onCeldaActualizada
   onCeldaActualizada: (celda: MatrixCell) => void;
 }) {
   const [ediciones, setEdiciones] = useState<Record<number, EdicionContrato>>({});
-  // Mientras se está confirmando el guardado de un docente, se oculta su
-  // "Deshacer" -- si no, compiten dos formas de "no, esperá" a la vez.
-  const [confirmandoId, setConfirmandoId] = useState<number | null>(null);
 
   function valor(t: SubjectTeacher, campo: keyof EdicionContrato): string {
     return ediciones[t.id]?.[campo] ?? aEdicion(t)[campo];
@@ -139,21 +136,19 @@ function DocentesContrato({ subjectId, teachers, onCambiados, onCeldaActualizada
 
           {hayCambios(t) && (
             <div className="flex items-center justify-end gap-2 pt-0.5">
-              {confirmandoId !== t.id && (
-                <button
-                  type="button"
-                  onClick={() => deshacer(t)}
-                  className="text-[11px] text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100"
-                >
-                  Deshacer
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => deshacer(t)}
+                className="text-[11px] text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100"
+              >
+                Deshacer
+              </button>
               <BotonConfirmar
                 etiqueta="Guardar"
                 etiquetaConfirmar="Sí, guardar"
+                titulo="Confirmar datos de contrato"
                 mensaje={`¿Guardar los datos de contrato de ${t.full_name}?`}
                 onConfirmar={() => guardar(t)}
-                onConfirmandoChange={(v) => setConfirmandoId(v ? t.id : null)}
                 className="h-6 px-2 text-[11px]"
               />
             </div>
@@ -180,10 +175,6 @@ export function PanelCelda({ subjectId, paso, celda, teachers, onGuardado, onTea
     referenceDate: celda?.reference_date ?? '',
   });
   const [error, setError] = useState('');
-  // Mientras el botón de guardar está pidiendo confirmación, se oculta el
-  // "Cancelar" del panel -- si no, quedan dos botones "Cancelar" a la vez
-  // (uno cierra todo el panel, el otro solo vuelve del paso de confirmación).
-  const [confirmandoGuardado, setConfirmandoGuardado] = useState(false);
 
   if (pathCargado !== path) {
     setPathCargado(path);
@@ -247,6 +238,7 @@ export function PanelCelda({ subjectId, paso, celda, teachers, onGuardado, onTea
         if (onRecargar) onRecargar();
         throw new Error('Otro usuario modificó esta celda. Recargando...');
       }
+      throw err;
     }
   }
 
@@ -403,19 +395,17 @@ export function PanelCelda({ subjectId, paso, celda, teachers, onGuardado, onTea
           {celda?.initials ? `Último: ${celda.initials}` : ''}
         </span>
         <div className="flex items-center gap-2">
-          {!confirmandoGuardado && (
-            <button type="button" onClick={onCerrar} className="text-[12px] text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100">
-              Cancelar
-            </button>
-          )}
+          <button type="button" onClick={onCerrar} className="text-[12px] text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100">
+            Cancelar
+          </button>
           <BotonConfirmar
             variante="primario"
             etiqueta="Guardar"
             etiquetaConfirmar="Sí, guardar"
+            titulo="Confirmar guardado"
             mensaje="¿Confirmás guardar estos cambios?"
             onValidar={validar}
             onConfirmar={guardar}
-            onConfirmandoChange={setConfirmandoGuardado}
             className="h-8 px-3 text-[12px]"
           />
         </div>
