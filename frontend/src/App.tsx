@@ -7,6 +7,7 @@ import Usuarios from './pages/Usuarios';
 import ListadoProgramas from './pages/ListadoProgramas';
 import Programa from './pages/Programas';
 import Asignatura from './pages/Asignatura';
+import Configuracion from './pages/Configuracion';
 
 function Protegida({ children }: { children: React.ReactNode }) {
   const { usuario, cargando } = useAuth();
@@ -49,6 +50,11 @@ export default function App() {
           <Route
             path="/asignaturas/:id"
             element={<Protegida><Asignatura /></Protegida>}
+          />
+
+          <Route
+            path="/configuracion"
+            element={<Protegida><Configuracion /></Protegida>}
           />
 
           <Route

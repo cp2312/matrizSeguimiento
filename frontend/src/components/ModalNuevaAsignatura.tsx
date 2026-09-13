@@ -52,8 +52,8 @@ export function ModalNuevaAsignatura({ abierto, programa, asignatura, onCerrar, 
   const [libroIgual, setLibroIgual] = useState(true);
   const [error, setError] = useState('');
   const [enviando, setEnviando] = useState(false);
-  // El primer clic en "Guardar" abre el modal de "¿estás seguro?" (ver
-  // ModalConfirmar); solo confirmar ahí llama a la API.
+  // Primer clic en "Guardar" arma la confirmación; el segundo (sobre "Sí,
+  // guardar") sí llama a la API. Cualquier edición vuelve a pedirla.
   const [confirmando, setConfirmando] = useState(false);
 
   // Precarga los datos al abrir en modo edición (o los reinicia si se vuelve a
@@ -84,11 +84,19 @@ export function ModalNuevaAsignatura({ abierto, programa, asignatura, onCerrar, 
   // virtual) en cambio pide el nombre del programa. Son mutuamente excluyentes.
   const pideModalidad = programa.type === 'hibrido';
   const pideNombrePrograma = programa.type === 'presencial';
-  const set = (campo: keyof typeof VACIO) => (e: React.ChangeEvent<any>) =>
+  const set = (campo: keyof typeof VACIO) => (e: React.ChangeEvent<any>) => {
     setForm({ ...form, [campo]: e.target.value });
+    setConfirmando(false);
+  };
 
   function enviar(e: React.FormEvent) {
     e.preventDefault();
+
+    if (!confirmando) {
+      setConfirmando(true);
+      return;
+    }
+
     setError('');
     setConfirmando(true);
   }
@@ -151,8 +159,8 @@ export function ModalNuevaAsignatura({ abierto, programa, asignatura, onCerrar, 
         </div>
 
         {(pideModalidad || pideNombrePrograma) && (
-          <div className="bg-teal-50 rounded-lg p-3">
-            <p className="text-[11px] text-teal-700 mb-3">
+          <div className="bg-teal-50 dark:bg-teal-950/40 rounded-lg p-3">
+            <p className="text-[11px] text-teal-700 dark:text-teal-300 mb-3">
               {pideNombrePrograma ? 'Este programa es presencial con asignatura virtual' : 'Este programa es híbrido'}
             </p>
             <div className="flex flex-wrap gap-3">
@@ -179,7 +187,7 @@ export function ModalNuevaAsignatura({ abierto, programa, asignatura, onCerrar, 
           <Casilla
             etiqueta="¿El nombre del programa y el libro es igual?"
             checked={libroIgual}
-            onChange={(e) => setLibroIgual(e.target.checked)}
+            onChange={(e) => { setLibroIgual(e.target.checked); setConfirmando(false); }}
           />
 
           {libroIgual && (
@@ -196,8 +204,8 @@ export function ModalNuevaAsignatura({ abierto, programa, asignatura, onCerrar, 
           onChange={set('generalComment')}
         />
 
-        <div className="bg-slate-50 rounded-lg p-3">
-          <p className="text-[11px] text-slate-500 leading-relaxed">
+        <div className="bg-slate-50 dark:bg-slate-800/60 rounded-lg p-3">
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
             Con {creditos} {creditos === 1 ? 'crédito' : 'créditos'} corresponden {creditos}{' '}
             {creditos === 1 ? 'OVA' : 'OVAs'}, {creditos} {creditos === 1 ? 'video' : 'videos'} de
             contenido, {creditos} {creditos === 1 ? 'guía' : 'guías'} y 2 infografías.
@@ -210,10 +218,19 @@ export function ModalNuevaAsignatura({ abierto, programa, asignatura, onCerrar, 
 
         <Alerta>{error}</Alerta>
 
+        {confirmando && (
+          <p className="text-[13px] text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 rounded-lg px-3 py-2">
+            ¿Confirmás {esEdicion ? 'guardar los cambios en' : 'crear la asignatura'}{' '}
+            <strong>{form.name || (esEdicion ? 'esta asignatura' : 'la nueva asignatura')}</strong>?
+          </p>
+        )}
+
         <div className="flex gap-2 justify-end pt-1">
-          <Boton type="button" onClick={onCerrar}>Cancelar</Boton>
-          <Boton type="submit" variante="primario">
-            {esEdicion ? 'Guardar cambios' : 'Crear asignatura'}
+          <Boton type="button" onClick={() => (confirmando ? setConfirmando(false) : onCerrar())}>
+            {confirmando ? 'Volver' : 'Cancelar'}
+          </Boton>
+          <Boton type="submit" variante="primario" disabled={enviando}>
+            {enviando ? 'Guardando…' : confirmando ? 'Sí, guardar' : esEdicion ? 'Guardar cambios' : 'Crear asignatura'}
           </Boton>
         </div>
       </form>

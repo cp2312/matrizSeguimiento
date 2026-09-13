@@ -25,22 +25,46 @@ function formatearFecha(iso: string) {
   });
 }
 
-/** Swatch + etiqueta del tipo de programa. Híbrido se pinta partido a la
- *  mitad (presencial / virtual) porque no tiene un color propio: es ambos. */
-function TipoSwatch({ tipo }: { tipo: ProgramType }) {
+/** Píldora destacada con el color del tipo. Híbrido muestra ambas mitades
+ *  (presencial / virtual) porque no tiene un color propio: es ambos. */
+function TipoSwatch({ tipo, variante = 'lista' }: { tipo: ProgramType; variante?: 'lista' | 'pill' }) {
+  const esHibrido = tipo === 'hibrido';
+
+  const swatch = esHibrido ? (
+    <span className="w-4 h-4 rounded-full shrink-0 overflow-hidden flex ring-2 ring-black/10 dark:ring-white/20">
+      <span className="w-1/2 h-full" style={{ background: TIPOS_PROGRAMA.presencial.color }} />
+      <span className="w-1/2 h-full" style={{ background: TIPOS_PROGRAMA.virtual.color }} />
+    </span>
+  ) : (
+    <span
+      className="w-4 h-4 rounded-full shrink-0 ring-2 ring-black/10 dark:ring-white/20"
+      style={{ background: TIPOS_PROGRAMA[tipo].color }}
+    />
+  );
+
+  if (variante === 'pill') {
+    const color = tipo === 'hibrido' ? null : TIPOS_PROGRAMA[tipo].color;
+    const bg = esHibrido
+      ? 'linear-gradient(90deg, rgba(37,99,235,0.15), rgba(6,182,212,0.15))'
+      : `${color}1f`;
+    const borde = esHibrido
+      ? '1px solid rgba(37,99,235,0.35)'
+      : `${color}55`;
+    const texto = esHibrido ? '#1d4ed8' : color!;
+    return (
+      <span
+        className="inline-flex items-center gap-2 rounded-full pl-2.5 pr-3 py-1 text-[13px] font-semibold select-none"
+        style={{ background: bg, border: `1px solid ${borde}`, color: texto }}
+      >
+        {swatch}
+        {ETIQUETA_TIPO[tipo]}
+      </span>
+    );
+  }
+
   return (
-    <span className="inline-flex items-center gap-1.5 text-slate-600">
-      {tipo === 'hibrido' ? (
-        <span className="w-3.5 h-3.5 rounded-sm overflow-hidden flex shrink-0 ring-1 ring-black/5">
-          <span className="w-1/2 h-full" style={{ background: TIPOS_PROGRAMA.presencial.color }} />
-          <span className="w-1/2 h-full" style={{ background: TIPOS_PROGRAMA.virtual.color }} />
-        </span>
-      ) : (
-        <span
-          className="w-3.5 h-3.5 rounded-sm shrink-0 ring-1 ring-black/5"
-          style={{ background: TIPOS_PROGRAMA[tipo].color }}
-        />
-      )}
+    <span className="inline-flex items-center gap-2 text-slate-600 dark:text-slate-300">
+      {swatch}
       {ETIQUETA_TIPO[tipo]}
     </span>
   );
@@ -151,29 +175,19 @@ export default function ListadoProgramas() {
               ))}
 
               {filtro === 'virtual' && (
-                <div className="flex items-center gap-1.5 ml-1.5 pl-3 border-l border-slate-300">
-                  <span className="text-[10.5px] font-semibold text-slate-400 uppercase tracking-wide">
-                    Nivel
-                  </span>
-                  <div className="flex items-center gap-0.5 bg-slate-50 border border-slate-200 rounded-lg p-0.5">
+                <div className="flex items-center gap-1 ml-1 pl-2 border-l border-slate-200 dark:border-slate-700">
+                  <FiltroPildora activo={nivelFiltro === 'todos'} onClick={() => setNivelFiltro('todos')}>
+                    Todos
+                  </FiltroPildora>
+                  {NIVELES_PROGRAMA.map((n) => (
                     <FiltroPildora
-                      tamano="chico" acento="cyan"
-                      activo={nivelFiltro === 'todos'}
-                      onClick={() => setNivelFiltro('todos')}
+                      key={n.valor}
+                      activo={nivelFiltro === n.valor}
+                      onClick={() => setNivelFiltro(n.valor)}
                     >
-                      Todos
+                      {n.etiqueta}
                     </FiltroPildora>
-                    {NIVELES_PROGRAMA.map((n) => (
-                      <FiltroPildora
-                        key={n.valor}
-                        tamano="chico" acento="cyan"
-                        activo={nivelFiltro === n.valor}
-                        onClick={() => setNivelFiltro(n.valor)}
-                      >
-                        {n.etiqueta}
-                      </FiltroPildora>
-                    ))}
-                  </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -185,7 +199,7 @@ export default function ListadoProgramas() {
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
                 placeholder="Buscar programa…"
-                className="w-full h-9 pl-9 pr-3 rounded-lg border border-slate-200 bg-white text-[13px]
+                className="w-full h-9 pl-9 pr-3 rounded-lg border border-slate-200 bg-white dark:bg-slate-900 dark:border-slate-700 dark:text-slate-100 text-[13px]
                            outline-none transition-colors focus:ring-2 focus:ring-slate-400"
               />
             </div>
@@ -200,17 +214,17 @@ export default function ListadoProgramas() {
               </Boton>
             </Vacio>
           ) : (
-            <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-x-auto">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-slate-100">
-                    <th className="text-left font-medium text-[11px] uppercase tracking-wide text-slate-400 px-4 py-3">
+                  <tr className="border-b border-slate-100 dark:border-slate-800">
+                    <th className="text-left font-medium text-[11px] uppercase tracking-wide text-slate-400 dark:text-slate-500 px-4 py-3">
                       Nombre
                     </th>
-                    <th className="w-32 text-left font-medium text-[11px] uppercase tracking-wide text-slate-400 px-2 py-3">
+                    <th className="w-32 text-left font-medium text-[11px] uppercase tracking-wide text-slate-400 dark:text-slate-500 px-2 py-3">
                       Tipo
                     </th>
-                    <th className="w-36 text-left font-medium text-[11px] uppercase tracking-wide text-slate-400 px-2 py-3">
+                    <th className="w-36 text-left font-medium text-[11px] uppercase tracking-wide text-slate-400 dark:text-slate-500 px-2 py-3">
                       Creado
                     </th>
                     <th className="w-40" />
@@ -222,13 +236,13 @@ export default function ListadoProgramas() {
                       key={p.id}
                       onClick={() => navigate(`/programas/${p.id}`)}
                       title="Ver matriz del programa"
-                      className={`border-t border-slate-100 cursor-pointer transition-colors hover:bg-slate-50 ${p.archived ? 'opacity-50' : ''}`}
+                      className={`border-t border-slate-100 dark:border-slate-800 cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/60 ${p.archived ? 'opacity-50' : ''}`}
                     >
                       <td className="px-4 py-3.5">
                         <Link
                           to={`/programas/${p.id}`}
                           onClick={(e) => e.stopPropagation()}
-                          className="group inline-flex items-center gap-1 text-slate-800 font-medium hover:text-marca-600 transition-colors"
+                          className="group inline-flex items-center gap-1 text-slate-800 dark:text-slate-100 font-medium hover:text-marca-600 dark:hover:text-marca-400 transition-colors"
                         >
                           {p.name}
                           <IconoFlecha />
@@ -237,10 +251,12 @@ export default function ListadoProgramas() {
                           <p className="text-[12.5px] text-slate-400 mt-0.5 line-clamp-1">{p.notes}</p>
                         )}
                       </td>
-                      <td className="px-2 text-[13px]">
-                        <TipoSwatch tipo={p.type} />
+                      <td className="px-2">
+                        <TipoSwatch tipo={p.type} variante="pill" />
                         {p.type === 'virtual' && p.academic_level && (
-                          <span className="block text-[11px] text-slate-400 mt-1">
+                          <span className="mt-2 inline-flex items-center gap-1 rounded-md bg-violet-100 dark:bg-violet-500/15
+                                           text-violet-700 dark:text-violet-300 px-1.5 py-0.5 text-[12px] font-semibold">
+                            <span className="w-1.5 h-1.5 rounded-full bg-violet-500 shrink-0" />
                             {ETIQUETA_NIVEL[p.academic_level]}
                           </span>
                         )}
@@ -248,20 +264,20 @@ export default function ListadoProgramas() {
                           <span className="block text-[11px] text-slate-400 mt-1">Archivado</span>
                         )}
                       </td>
-                      <td className="px-2 text-slate-500 text-[13px] tabular-nums whitespace-nowrap">
+                      <td className="px-2 text-slate-500 dark:text-slate-400 text-[13px] tabular-nums whitespace-nowrap">
                         {formatearFecha(p.created_at)}
                       </td>
                       <td className="text-right pr-4 whitespace-nowrap">
                         <button
                           onClick={(e) => { e.stopPropagation(); setEditando(p); }}
-                          className="inline-flex items-center gap-1 text-[13px] text-slate-500 hover:text-slate-800 transition-colors"
+                          className="inline-flex items-center gap-1 text-[13px] text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors"
                         >
                           <IconoLapiz />
                           Editar
                         </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); setEliminando(p); }}
-                          className="inline-flex items-center gap-1 text-[13px] text-slate-500 hover:text-red-600 transition-colors ml-3"
+                          className="inline-flex items-center gap-1 text-[13px] text-slate-500 dark:text-slate-400 hover:text-red-600 transition-colors ml-3"
                         >
                           <IconoBasura />
                           Eliminar
@@ -310,10 +326,12 @@ function FiltroPildora({
   acento?: 'slate' | 'cyan';
 }) {
   const dimensiones = tamano === 'chico' ? 'h-7 px-2.5 text-[12px]' : 'h-8 px-3 text-[13px]';
-  const activoClase = acento === 'cyan' ? 'bg-cyan-100 text-cyan-800' : 'bg-slate-100 text-slate-900';
+  const activoClase = acento === 'cyan'
+    ? 'bg-cyan-100 text-cyan-800 dark:bg-cyan-500/20 dark:text-cyan-300'
+    : 'bg-slate-100 text-slate-900 dark:bg-white/10 dark:text-white';
   const inactivoClase = acento === 'cyan'
-    ? 'text-slate-500 hover:text-cyan-800 hover:bg-white'
-    : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50';
+    ? 'text-slate-500 dark:text-slate-400 hover:text-cyan-800 dark:hover:text-cyan-300 hover:bg-white dark:hover:bg-white/5'
+    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/5';
 
   return (
     <button
@@ -345,8 +363,8 @@ function ModalPrograma({
   });
   const [error, setError] = useState('');
   const [enviando, setEnviando] = useState(false);
-  // El primer clic en "Guardar" abre el modal de "¿estás seguro?" (ver
-  // ModalConfirmar); solo confirmar ahí llama a la API.
+  // Primer clic en "Guardar" arma la confirmación; el segundo (sobre "Sí,
+  // guardar") sí llama a la API. Cualquier edición vuelve a pedirla.
   const [confirmando, setConfirmando] = useState(false);
 
   // Precarga los datos al abrir en modo edición
@@ -368,10 +386,24 @@ function ModalPrograma({
 
   function set<K extends keyof typeof form>(campo: K, valor: (typeof form)[K]) {
     setForm({ ...form, [campo]: valor });
+    setConfirmando(false);
   }
 
   function enviar(e: React.FormEvent) {
     e.preventDefault();
+
+    if (form.type === 'virtual' && !form.academicLevel) {
+      return setError('Un programa virtual debe indicar si es de pregrado o posgrado');
+    }
+
+    if (!confirmando) {
+      setError('');
+      setConfirmando(true);
+      return;
+    }
+
+    setError('');
+    setEnviando(true);
 
     if (form.type === 'virtual' && !form.academicLevel) {
       return setError('Un programa virtual debe indicar si es de pregrado o posgrado');
@@ -401,27 +433,67 @@ function ModalPrograma({
 
   return (
     <Modal abierto={abierto} titulo={esEdicion ? 'Editar programa' : 'Nuevo programa'} onCerrar={onCerrar}>
-      <form onSubmit={enviar} className="space-y-4">
-        <Campo
-          etiqueta="Nombre"
-          required
-          value={form.name}
-          onChange={(e) => set('name', e.target.value)}
-        />
+      <form onSubmit={enviar} className="space-y-6">
+        <div className="space-y-5">
+          <Campo
+            etiqueta="Nombre del programa"
+            required
+            autoFocus
+            placeholder="Ej. Licenciatura en Matemáticas"
+            value={form.name}
+            onChange={(e) => set('name', e.target.value)}
+          />
 
-        <AreaTexto
-          etiqueta="Notas (opcional)"
-          rows={3}
-          value={form.notes}
-          onChange={(e) => set('notes', e.target.value)}
-        />
+          <AreaTexto
+            etiqueta="Notas (opcional)"
+            rows={3}
+            placeholder="Contexto, observaciones o información adicional…"
+            value={form.notes}
+            onChange={(e) => set('notes', e.target.value)}
+          />
+        </div>
 
-        <Select
-          etiqueta="Tipo"
-          opciones={TIPOS_SELECT}
-          value={form.type}
-          onChange={(e) => set('type', e.target.value as ProgramType)}
-        />
+        <div className="border-t border-slate-200 dark:border-slate-700 pt-5">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-3">
+            Modalidad del programa
+          </p>
+
+          <div className="space-y-5">
+            <Select
+              etiqueta="Tipo"
+              opciones={TIPOS_SELECT}
+              value={form.type}
+              onChange={(e) => set('type', e.target.value as ProgramType)}
+            />
+
+            {form.type === 'virtual' && (
+              <Select
+                etiqueta="Nivel académico"
+                opciones={[{ valor: '', etiqueta: 'Selecciona uno…' }, ...NIVELES_SELECT]}
+                value={form.academicLevel}
+                onChange={(e) => set('academicLevel', e.target.value as ProgramLevel | '')}
+              />
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 text-[12px] text-slate-500 dark:text-slate-400">
+          {form.type === 'hibrido' ? (
+            <span className="w-3.5 h-3.5 rounded-sm shrink-0 overflow-hidden flex ring-1 ring-black/10 dark:ring-white/10">
+              <span className="w-1/2 h-full" style={{ background: TIPOS_PROGRAMA.presencial.color }} />
+              <span className="w-1/2 h-full" style={{ background: TIPOS_PROGRAMA.virtual.color }} />
+            </span>
+          ) : (
+            <span
+              className="w-3.5 h-3.5 rounded-sm shrink-0 ring-1 ring-black/10 dark:ring-white/10"
+              style={{ background: TIPOS_PROGRAMA[form.type].color }}
+            />
+          )}
+          <span>
+            Programas <strong className="font-medium">{ETIQUETA_TIPO[form.type].toLowerCase()}</strong> se
+            muestran agrupados en el listado con este color.
+          </span>
+        </div>
 
         {form.type === 'virtual' && (
           <Select
@@ -434,10 +506,27 @@ function ModalPrograma({
 
         <Alerta>{error}</Alerta>
 
+        {confirmando && (
+          <div className="flex items-start gap-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 px-3.5 py-3">
+            <svg className="w-4.5 h-4.5 text-slate-400 shrink-0 mt-px" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 8h.01" />
+              <path d="M11 12h1v4h1" />
+            </svg>
+            <p className="text-[13px] text-slate-600 dark:text-slate-300 leading-snug">
+              ¿Confirmás {esEdicion ? 'guardar los cambios en' : 'crear el programa'}{' '}
+              <strong className="font-semibold">{form.name || (esEdicion ? 'este programa' : 'el nuevo programa')}</strong>?
+            </p>
+          </div>
+        )}
+
         <div className="flex gap-2 justify-end pt-1">
-          <Boton type="button" onClick={onCerrar}>Cancelar</Boton>
-          <Boton type="submit" variante="primario">
-            {esEdicion ? 'Guardar cambios' : 'Crear programa'}
+          <Boton type="button" onClick={() => (confirmando ? setConfirmando(false) : onCerrar())}>
+            {confirmando ? 'Volver' : 'Cancelar'}
+          </Boton>
+          <Boton type="submit" variante="primario" disabled={enviando}>
+            {enviando ? 'Guardando…' : confirmando ? 'Sí, guardar' : esEdicion ? 'Guardar cambios' : 'Crear programa'}
           </Boton>
         </div>
       </form>
@@ -487,7 +576,7 @@ function ModalEliminarPrograma({
   return (
     <Modal abierto={!!programa} titulo="Eliminar programa" onCerrar={onCerrar}>
       <div className="space-y-4">
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-slate-600 dark:text-slate-300">
           ¿Seguro que querés eliminar <strong>{programa?.name}</strong>? Esto borra también todas
           sus asignaturas, celdas e historial. La acción no se puede deshacer.
         </p>

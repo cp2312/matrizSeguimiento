@@ -11,10 +11,10 @@ interface Props extends Omit<React.SelectHTMLAttributes<HTMLSelectElement>, 'chi
 export function Select({ etiqueta, opciones, className = '', ...props }: Props) {
   return (
     <label className="block">
-      <span className="block text-sm text-slate-600 mb-1.5">{etiqueta}</span>
+      <span className="block text-sm text-slate-600 dark:text-slate-300 mb-1.5">{etiqueta}</span>
       <select
         {...props}
-        className={`w-full h-10 px-3 rounded-lg border border-slate-300 bg-white text-sm
+        className={`w-full h-10 px-3 rounded-lg border border-slate-300 bg-white dark:bg-slate-900 dark:border-slate-700 dark:text-slate-100 text-sm
                     outline-none focus:ring-2 focus:ring-slate-400 ${className}`}
       >
         {opciones.map((o) => (

@@ -102,6 +102,8 @@ export interface User {
   initials: string;
   role: UserRole;
   active: boolean;
+  /** foto de perfil como data URL base64; null si no tiene */
+  avatar_url: string | null;
 }
 
 export interface Program {

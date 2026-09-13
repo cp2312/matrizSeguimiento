@@ -53,9 +53,9 @@ export function BloqueProceso({
               <button
                 type="button"
                 onClick={() => onSeleccionar(`${p.blockKey}.${siguienteInstancia}.${p.step.key}`)}
-                className="min-w-[104px] shrink-0 p-2 rounded-lg border border-dashed border-slate-300
-                           text-slate-400 text-[11px] leading-tight text-center grid place-items-center
-                           hover:border-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors"
+                className="min-w-[104px] shrink-0 p-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-700
+                           text-slate-400 dark:text-slate-500 text-[11px] leading-tight text-center grid place-items-center
+                           hover:border-slate-400 hover:text-slate-600 dark:hover:text-slate-300 dark:hover:bg-white/5 hover:bg-slate-50 transition-colors"
               >
                 + Agregar otro reporte
               </button>
@@ -69,10 +69,10 @@ export function BloqueProceso({
   if (soloContenido) return celdasEl;
 
   return (
-    <section className="bg-white border border-slate-200 rounded-xl p-4">
+    <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4">
       <div className="flex items-center justify-between mb-2.5">
-        <h3 className="text-sm font-medium text-slate-800">{titulo}</h3>
-        <span className="text-xs text-slate-400">
+        <h3 className="text-sm font-medium text-slate-800 dark:text-slate-100">{titulo}</h3>
+        <span className="text-xs text-slate-400 dark:text-slate-500">
           {terminados} de {visibles.length}
         </span>
       </div>

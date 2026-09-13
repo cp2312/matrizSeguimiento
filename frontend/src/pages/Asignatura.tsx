@@ -89,22 +89,22 @@ export default function Asignatura() {
         titulo={asignatura.name}
         subtitulo={subtitulo}
         volver={
-          <nav className="flex items-center gap-1.5 text-[13px] text-slate-500">
-            <Link to="/" className="hover:text-slate-800">← Programas</Link>
-            <span className="text-slate-300">/</span>
-            <Link to={`/programas/${asignatura.program_id}`} className="hover:text-slate-800">
+          <nav className="flex items-center gap-1.5 text-[13px] text-slate-500 dark:text-slate-400">
+            <Link to="/" className="hover:text-slate-800 dark:hover:text-slate-100">← Programas</Link>
+            <span className="text-slate-300 dark:text-slate-600">/</span>
+            <Link to={`/programas/${asignatura.program_id}`} className="hover:text-slate-800 dark:hover:text-slate-100">
               {programa?.name ?? asignatura.semester}
             </Link>
           </nav>
         }
       >
-        <span className="text-[13px] text-slate-500">
+        <span className="text-[13px] text-slate-500 dark:text-slate-400">
           {avance.terminados} de {avance.total} · {avance.porcentaje}%
         </span>
         <button
           onClick={() => setEditando(true)}
-          className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-[13px] text-slate-500
-                     hover:text-slate-800 hover:bg-slate-100 transition-colors"
+          className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-[13px] text-slate-500 dark:text-slate-400
+                     hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-white/10 transition-colors"
         >
           <IconoLapiz />
           Editar

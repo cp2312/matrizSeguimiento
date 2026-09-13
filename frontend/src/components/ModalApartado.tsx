@@ -45,9 +45,9 @@ function TileAgregar({ etiqueta, onClick }: { etiqueta: string; onClick: () => v
     <button
       type="button"
       onClick={onClick}
-      className="flex items-center gap-2.5 px-3.5 h-11 rounded-lg border border-dashed border-slate-300
-                 text-slate-400 text-[13px] text-left transition-colors
-                 hover:border-slate-400 hover:text-slate-600 hover:bg-slate-50"
+      className="flex items-center gap-2.5 px-3.5 h-11 rounded-lg border border-dashed border-slate-300 dark:border-slate-700
+                 text-slate-400 dark:text-slate-500 text-[13px] text-left transition-colors
+                 hover:border-slate-400 hover:text-slate-600 dark:hover:text-slate-300 dark:hover:bg-white/5 hover:bg-slate-50"
     >
       + Agregar {etiqueta}
     </button>
@@ -130,14 +130,14 @@ export function ModalApartado({
       accionesTitulo={!cargando ? (
         <button
           onClick={() => setVistaManual(vista === 'todos' ? null : 'todos')}
-          className="text-[12px] font-medium text-cyan-700 hover:text-cyan-900 flex items-center gap-1 shrink-0 mt-0.5"
+          className="text-[12px] font-medium text-cyan-700 dark:text-cyan-400 hover:text-cyan-900 dark:hover:text-cyan-300 flex items-center gap-1 shrink-0 mt-0.5"
         >
           {vista === 'todos' ? '← Volver' : '▦ Ver todos'}
         </button>
       ) : null}
     >
       {cargando ? (
-        <p className="text-sm text-slate-400 py-6 text-center">Cargando…</p>
+        <p className="text-sm text-slate-400 dark:text-slate-500 py-6 text-center">Cargando…</p>
       ) : vista === 'todos' ? (
         <div className="grid sm:grid-cols-2 gap-2 max-h-[65vh] overflow-y-auto pr-1">
           {entradas.map(([clave, g]) => (
@@ -177,7 +177,7 @@ export function ModalApartado({
         <div className="flex gap-4 items-start">
           <div className="flex-1 min-w-0">
             {BLOQUES_VIDEO.has(grupoActivo.pasos[0]?.blockKey) && onCambiarVideoPorDocente && (
-              <label className="flex items-center gap-2 mb-3 text-[12px] text-slate-600 cursor-pointer">
+              <label className="flex items-center gap-2 mb-3 text-[12px] text-slate-600 dark:text-slate-300 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={videoPorDocente}

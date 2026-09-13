@@ -46,6 +46,9 @@ function DocentesContrato({ subjectId, teachers, onCambiados, onCeldaActualizada
   onCeldaActualizada: (celda: MatrixCell) => void;
 }) {
   const [ediciones, setEdiciones] = useState<Record<number, EdicionContrato>>({});
+  // Mientras se está confirmando el guardado de un docente, se oculta su
+  // "Deshacer" -- si no, compiten dos formas de "no, esperá" a la vez.
+  const [confirmandoId, setConfirmandoId] = useState<number | null>(null);
 
   function valor(t: SubjectTeacher, campo: keyof EdicionContrato): string {
     return ediciones[t.id]?.[campo] ?? aEdicion(t)[campo];
@@ -96,7 +99,7 @@ function DocentesContrato({ subjectId, teachers, onCambiados, onCeldaActualizada
 
   if (teachers.length === 0) {
     return (
-      <p className="text-[11px] text-slate-400 mb-3">
+      <p className="text-[11px] text-slate-400 dark:text-slate-500 mb-3">
         Esta asignatura todavía no tiene docentes asignados (ver "Docentes asignados" en la página).
       </p>
     );
@@ -105,25 +108,25 @@ function DocentesContrato({ subjectId, teachers, onCambiados, onCeldaActualizada
   return (
     <div className="space-y-2 mb-3">
       {teachers.map((t) => (
-        <div key={t.id} className="bg-slate-50 rounded-md px-2.5 py-2 space-y-1.5">
-          <p className="text-[12px] font-medium text-slate-800">{t.full_name}</p>
+        <div key={t.id} className="bg-slate-50 dark:bg-slate-800/60 rounded-md px-2.5 py-2 space-y-1.5">
+          <p className="text-[12px] font-medium text-slate-800 dark:text-slate-100">{t.full_name}</p>
           <div className="flex gap-1.5">
             <label className="flex-1 block">
-              <span className="block text-[10px] text-slate-400 mb-0.5">Fecha inicio</span>
+              <span className="block text-[10px] text-slate-400 dark:text-slate-500 mb-0.5">Fecha inicio</span>
               <input
                 type="date"
                 value={valor(t, 'start_date')}
                 onChange={(e) => setCampo(t, 'start_date', e.target.value)}
-                className="w-full h-7 px-1.5 rounded border border-slate-300 text-[11px] outline-none focus:ring-2 focus:ring-slate-400"
+                className="w-full h-7 px-1.5 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 dark:text-slate-100 text-[11px] outline-none focus:ring-2 focus:ring-slate-400"
               />
             </label>
             <label className="flex-1 block">
-              <span className="block text-[10px] text-slate-400 mb-0.5">Fecha fin</span>
+              <span className="block text-[10px] text-slate-400 dark:text-slate-500 mb-0.5">Fecha fin</span>
               <input
                 type="date"
                 value={valor(t, 'end_date')}
                 onChange={(e) => setCampo(t, 'end_date', e.target.value)}
-                className="w-full h-7 px-1.5 rounded border border-slate-300 text-[11px] outline-none focus:ring-2 focus:ring-slate-400"
+                className="w-full h-7 px-1.5 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 dark:text-slate-100 text-[11px] outline-none focus:ring-2 focus:ring-slate-400"
               />
             </label>
           </div>
@@ -131,24 +134,26 @@ function DocentesContrato({ subjectId, teachers, onCambiados, onCeldaActualizada
             value={valor(t, 'contract_type')}
             placeholder="Tipo de contrato"
             onChange={(e) => setCampo(t, 'contract_type', e.target.value)}
-            className="w-full h-7 px-1.5 rounded border border-slate-300 text-[11px] outline-none focus:ring-2 focus:ring-slate-400"
+            className="w-full h-7 px-1.5 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 dark:text-slate-100 text-[11px] outline-none focus:ring-2 focus:ring-slate-400"
           />
 
           {hayCambios(t) && (
             <div className="flex items-center justify-end gap-2 pt-0.5">
-              <button
-                type="button"
-                onClick={() => deshacer(t)}
-                className="text-[11px] text-slate-500 hover:text-slate-800"
-              >
-                Deshacer
-              </button>
+              {confirmandoId !== t.id && (
+                <button
+                  type="button"
+                  onClick={() => deshacer(t)}
+                  className="text-[11px] text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100"
+                >
+                  Deshacer
+                </button>
+              )}
               <BotonConfirmar
                 etiqueta="Guardar"
                 etiquetaConfirmar="Sí, guardar"
-                titulo="Confirmar datos de contrato"
                 mensaje={`¿Guardar los datos de contrato de ${t.full_name}?`}
                 onConfirmar={() => guardar(t)}
+                onConfirmandoChange={(v) => setConfirmandoId(v ? t.id : null)}
                 className="h-6 px-2 text-[11px]"
               />
             </div>
@@ -175,6 +180,10 @@ export function PanelCelda({ subjectId, paso, celda, teachers, onGuardado, onTea
     referenceDate: celda?.reference_date ?? '',
   });
   const [error, setError] = useState('');
+  // Mientras el botón de guardar está pidiendo confirmación, se oculta el
+  // "Cancelar" del panel -- si no, quedan dos botones "Cancelar" a la vez
+  // (uno cierra todo el panel, el otro solo vuelve del paso de confirmación).
+  const [confirmandoGuardado, setConfirmandoGuardado] = useState(false);
 
   if (pathCargado !== path) {
     setPathCargado(path);
@@ -238,20 +247,19 @@ export function PanelCelda({ subjectId, paso, celda, teachers, onGuardado, onTea
         if (onRecargar) onRecargar();
         throw new Error('Otro usuario modificó esta celda. Recargando...');
       }
-      throw err;
     }
   }
 
   return (
-    <div className="bg-white border border-slate-300 rounded-xl p-3.5">
+    <div className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-3.5">
       <div className="flex items-start justify-between gap-2 mb-3">
         <div className="min-w-0">
-          <p className="text-[13px] font-medium text-slate-800 leading-snug">{etiquetaPaso(step, paso.instance)}</p>
-          <p className="text-[10px] text-slate-400 mt-0.5 truncate">{path}</p>
+          <p className="text-[13px] font-medium text-slate-800 dark:text-slate-100 leading-snug">{etiquetaPaso(step, paso.instance)}</p>
+          <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 truncate">{path}</p>
         </div>
         <button
           onClick={onCerrar}
-          className="text-slate-400 hover:text-slate-700 text-lg leading-none shrink-0"
+          className="text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 text-lg leading-none shrink-0"
           aria-label="Cerrar"
         >
           ×
@@ -295,8 +303,8 @@ export function PanelCelda({ subjectId, paso, celda, teachers, onGuardado, onTea
               className={`flex items-center gap-2 w-full h-8 px-2 rounded-md text-[12px] text-left
                           border transition-colors ${
                 activo
-                  ? 'border-cyan-600 bg-cyan-50 text-slate-900'
-                  : 'border-slate-200 hover:bg-slate-50 text-slate-700'
+                  ? 'border-cyan-600 bg-cyan-50 text-slate-900 dark:border-cyan-500 dark:bg-cyan-950/40 dark:text-slate-100'
+                  : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/60 text-slate-700 dark:text-slate-300'
               }`}
             >
               <span
@@ -310,29 +318,29 @@ export function PanelCelda({ subjectId, paso, celda, teachers, onGuardado, onTea
       </div>
 
       <label className="block mb-3">
-        <span className="text-[11px] text-slate-500">Fecha</span>
+        <span className="text-[11px] text-slate-500 dark:text-slate-400">Fecha</span>
         <input
           type="date"
           value={form.doneDate}
           onChange={(e) => setForm({ ...form, doneDate: e.target.value })}
-          className="w-full h-8 mt-1 px-2 rounded-md border border-slate-300 text-[12px]
+          className="w-full h-8 mt-1 px-2 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 dark:text-slate-100 text-[12px]
                      outline-none focus:ring-2 focus:ring-slate-400"
         />
       </label>
 
       {step.autoDueDate ? (
         <label className="block mb-3">
-          <span className="text-[11px] text-slate-500">
+          <span className="text-[11px] text-slate-500 dark:text-slate-400">
             {step.autoDueDate.referenceLabel ?? 'Fecha inicial'}
           </span>
           <input
             type="date"
             value={form.referenceDate}
             onChange={(e) => setForm({ ...form, referenceDate: e.target.value })}
-            className="w-full h-8 mt-1 px-2 rounded-md border border-slate-300 text-[12px]
+            className="w-full h-8 mt-1 px-2 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 dark:text-slate-100 text-[12px]
                        outline-none focus:ring-2 focus:ring-slate-400"
           />
-          <span className="block text-[10px] text-slate-400 mt-1">
+          <span className="block text-[10px] text-slate-400 dark:text-slate-500 mt-1">
             {form.referenceDate
               ? `Vence el ${fechaLegible(sumarDiasHabiles(form.referenceDate, step.autoDueDate.businessDays))} ` +
                 `(${step.autoDueDate.businessDays} días hábiles después). Si para entonces sigue sin ` +
@@ -342,15 +350,15 @@ export function PanelCelda({ subjectId, paso, celda, teachers, onGuardado, onTea
         </label>
       ) : step.hasDueDate && (
         <label className="block mb-3">
-          <span className="text-[11px] text-slate-500">{step.dueDateLabel ?? 'Fecha límite'}</span>
+          <span className="text-[11px] text-slate-500 dark:text-slate-400">{step.dueDateLabel ?? 'Fecha límite'}</span>
           <input
             type="date"
             value={form.dueDate}
             onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
-            className="w-full h-8 mt-1 px-2 rounded-md border border-slate-300 text-[12px]
+            className="w-full h-8 mt-1 px-2 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 dark:text-slate-100 text-[12px]
                        outline-none focus:ring-2 focus:ring-slate-400"
           />
-          <span className="block text-[10px] text-slate-400 mt-1">
+          <span className="block text-[10px] text-slate-400 dark:text-slate-500 mt-1">
             Avisa por correo al encargado si está por vencer y el paso sigue sin terminar.
           </span>
         </label>
@@ -358,7 +366,7 @@ export function PanelCelda({ subjectId, paso, celda, teachers, onGuardado, onTea
 
       {step.hasComment && (
         <label className="block mb-3">
-          <span className="text-[11px] text-slate-500">
+          <span className="text-[11px] text-slate-500 dark:text-slate-400">
             {step.commentLabel ?? 'Comentario'}
             {step.commentRequired && <span className="text-red-500"> *</span>}
           </span>
@@ -366,7 +374,7 @@ export function PanelCelda({ subjectId, paso, celda, teachers, onGuardado, onTea
             value={form.comment}
             onChange={(e) => setForm({ ...form, comment: e.target.value })}
             placeholder={step.commentRequired ? 'Requerido' : 'Opcional'}
-            className="w-full h-8 mt-1 px-2 rounded-md border border-slate-300 text-[12px]
+            className="w-full h-8 mt-1 px-2 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 dark:text-slate-100 text-[12px]
                        outline-none focus:ring-2 focus:ring-slate-400"
           />
         </label>
@@ -374,7 +382,7 @@ export function PanelCelda({ subjectId, paso, celda, teachers, onGuardado, onTea
 
       {step.hasSecondComment && (
         <label className="block mb-3">
-          <span className="text-[11px] text-slate-500">
+          <span className="text-[11px] text-slate-500 dark:text-slate-400">
             {step.secondCommentLabel ?? 'Segundo comentario'}
             {step.secondCommentRequired && <span className="text-red-500"> *</span>}
           </span>
@@ -382,7 +390,7 @@ export function PanelCelda({ subjectId, paso, celda, teachers, onGuardado, onTea
             value={form.secondComment}
             onChange={(e) => setForm({ ...form, secondComment: e.target.value })}
             placeholder={step.secondCommentRequired ? 'Requerido' : 'Opcional'}
-            className="w-full h-8 mt-1 px-2 rounded-md border border-slate-300 text-[12px]
+            className="w-full h-8 mt-1 px-2 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 dark:text-slate-100 text-[12px]
                        outline-none focus:ring-2 focus:ring-slate-400"
           />
         </label>
@@ -391,21 +399,23 @@ export function PanelCelda({ subjectId, paso, celda, teachers, onGuardado, onTea
       <Alerta>{error}</Alerta>
 
       <div className="flex items-center justify-between mt-3 gap-2">
-        <span className="text-[10px] text-slate-400 shrink-0">
+        <span className="text-[10px] text-slate-400 dark:text-slate-500 shrink-0">
           {celda?.initials ? `Último: ${celda.initials}` : ''}
         </span>
         <div className="flex items-center gap-2">
-          <button type="button" onClick={onCerrar} className="text-[12px] text-slate-500 hover:text-slate-800">
-            Cancelar
-          </button>
+          {!confirmandoGuardado && (
+            <button type="button" onClick={onCerrar} className="text-[12px] text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100">
+              Cancelar
+            </button>
+          )}
           <BotonConfirmar
             variante="primario"
             etiqueta="Guardar"
             etiquetaConfirmar="Sí, guardar"
-            titulo="Confirmar guardado"
             mensaje="¿Confirmás guardar estos cambios?"
             onValidar={validar}
             onConfirmar={guardar}
+            onConfirmandoChange={setConfirmandoGuardado}
             className="h-8 px-3 text-[12px]"
           />
         </div>
@@ -422,12 +432,12 @@ function BotonDecision({
       onClick={onClick}
       className={`w-full px-2.5 py-2 rounded-lg text-left border transition-colors ${
         activo
-          ? 'border-cyan-600 bg-cyan-50'
-          : 'border-slate-200 hover:bg-slate-50'
+          ? 'border-cyan-600 bg-cyan-50 dark:border-cyan-500 dark:bg-cyan-950/40'
+          : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/60'
       }`}
     >
-      <span className="block text-[12px] font-medium text-slate-800">{titulo}</span>
-      <span className="block text-[10px] text-slate-500 mt-0.5">{nota}</span>
+      <span className="block text-[12px] font-medium text-slate-800 dark:text-slate-100">{titulo}</span>
+      <span className="block text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">{nota}</span>
     </button>
   );
 }

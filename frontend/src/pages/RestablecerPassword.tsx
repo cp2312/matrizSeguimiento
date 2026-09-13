@@ -44,14 +44,14 @@ export default function RestablecerPassword() {
   return (
     <div className="login-fondo relative min-h-screen flex items-center justify-center p-6 overflow-hidden">
       <img
-        src="/logo-usta1.png"
+        src="https://campusvirtual.santototunja.edu.co/assets/Copia-de-FInal-Logo-campusprueba2-2-1-scaled-CAabIrYv.png"
         alt=""
         aria-hidden="true"
         className="login-marca-agua pointer-events-none select-none absolute -right-28 -bottom-28 w-[620px] max-w-none"
       />
 
-      <Tarjeta className="login-card relative z-10 w-full max-w-md border border-slate-300">
-        <div className="h-1.5 bg-teal-600" />
+      <Tarjeta className="login-card relative z-10 w-full max-w-md border border-slate-300 dark:border-slate-700">
+        <div className="h-1.5 bg-marca-600 dark:bg-marca-500" />
         <div className="p-10 sm:p-12">
 
           <div className="mb-8">
@@ -60,10 +60,10 @@ export default function RestablecerPassword() {
 
           {!token ? (
             <>
-              <h1 className="text-xl font-semibold text-slate-800 text-center mb-1.5">
+              <h1 className="text-xl font-semibold text-slate-800 dark:text-slate-100 text-center mb-1.5">
                 Enlace incompleto
               </h1>
-              <p className="text-sm text-slate-500 text-center mb-8">
+              <p className="text-sm text-slate-500 dark:text-slate-400 text-center mb-8">
                 Este enlace no trae el token de recuperación. Solicita uno nuevo.
               </p>
               <Link to="/olvido-password">
@@ -74,19 +74,19 @@ export default function RestablecerPassword() {
             </>
           ) : listo ? (
             <>
-              <h1 className="text-xl font-semibold text-slate-800 text-center mb-1.5">
+              <h1 className="text-xl font-semibold text-slate-800 dark:text-slate-100 text-center mb-1.5">
                 Contraseña actualizada
               </h1>
-              <p className="text-sm text-slate-500 text-center mb-2">
+              <p className="text-sm text-slate-500 dark:text-slate-400 text-center mb-2">
                 Ya podés iniciar sesión con tu nueva contraseña. Te llevamos al login…
               </p>
             </>
           ) : (
             <form onSubmit={enviar}>
-              <h1 className="text-xl font-semibold text-slate-800 text-center mb-1.5">
+              <h1 className="text-xl font-semibold text-slate-800 dark:text-slate-100 text-center mb-1.5">
                 Elegí una nueva contraseña
               </h1>
-              <p className="text-sm text-slate-500 text-center mb-8">
+              <p className="text-sm text-slate-500 dark:text-slate-400 text-center mb-8">
                 Mínimo 8 caracteres
               </p>
 
@@ -127,8 +127,8 @@ export default function RestablecerPassword() {
                 {enviando ? 'Guardando…' : 'Restablecer contraseña'}
               </Boton>
 
-              <p className="mt-5 text-xs text-slate-500 text-center">
-                <Link to="/login" className="hover:text-slate-700 underline underline-offset-2">
+              <p className="mt-5 text-xs text-slate-500 dark:text-slate-400 text-center">
+                <Link to="/login" className="hover:text-slate-700 dark:hover:text-slate-200 underline underline-offset-2">
                   Volver a iniciar sesión
                 </Link>
               </p>

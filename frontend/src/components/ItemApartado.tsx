@@ -22,16 +22,18 @@ export function ItemApartado({ titulo, pasos, celdas, activo = false, onClick }:
     <button
       onClick={onClick}
       className={`flex items-center gap-2.5 px-3.5 h-11 rounded-lg text-left border transition-colors ${
-        activo ? 'border-cyan-600 bg-cyan-50' : 'border-slate-200 bg-white hover:bg-slate-50'
+        activo
+          ? 'border-cyan-600 bg-cyan-50 dark:border-cyan-500 dark:bg-cyan-950/40'
+          : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/60'
       }`}
     >
       <span
         className="w-2.5 h-2.5 rounded-full shrink-0"
         style={{ background: e.fondo, border: e.borde ? '0.5px solid rgba(0,0,0,.2)' : 'none' }}
       />
-      <span className="flex-1 min-w-0 text-[13px] text-slate-800 truncate">{titulo}</span>
+      <span className="flex-1 min-w-0 text-[13px] text-slate-800 dark:text-slate-100 truncate">{titulo}</span>
       <span className="text-[11px] text-slate-400 shrink-0">{terminados} de {visibles.length}</span>
-      <span className="text-slate-300 shrink-0">›</span>
+      <span className="text-slate-300 dark:text-slate-600 shrink-0">›</span>
     </button>
   );
 }

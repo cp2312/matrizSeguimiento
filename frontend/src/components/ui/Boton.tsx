@@ -5,10 +5,10 @@ interface Props extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const VARIANTES = {
-  primario:   'bg-slate-900 text-white hover:bg-slate-800 shadow-sm',
-  secundario: 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 hover:border-slate-400 shadow-sm',
-  texto:      'bg-transparent text-slate-600 hover:bg-slate-100',
-  peligro:    'bg-white text-red-600 border border-red-200 hover:bg-red-50',
+  primario:   'bg-slate-900 text-white hover:bg-slate-800 shadow-sm dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white',
+  secundario: 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 hover:border-slate-400 shadow-sm dark:bg-slate-900 dark:text-slate-200 dark:border-slate-700 dark:hover:bg-slate-800 dark:hover:border-slate-600',
+  texto:      'bg-transparent text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800',
+  peligro:    'bg-white text-red-600 border border-red-200 hover:bg-red-50 dark:bg-slate-900 dark:border-red-800/60 dark:hover:bg-red-950/40',
 };
 
 const FORMAS = {
