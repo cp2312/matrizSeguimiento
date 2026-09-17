@@ -396,6 +396,105 @@ export async function enviarCorreoRecuperacion(datos: CorreoRecuperacion): Promi
   }
 }
 
+interface AvisoLibroNoEntregado {
+  paraEmail: string;
+  paraNombre: string;
+  /** nombres de los docentes de la asignatura, ya unidos con ", " -- null si no hay ninguno asignado */
+  docentes: string | null;
+  asignatura: string;
+  programa: string;
+  /** 'YYYY-MM-DD' */
+  bookDueDate: string;
+  diasRestantes: number;
+  subjectId: number;
+}
+
+function construirHtmlLibroNoEntregado(datos: AvisoLibroNoEntregado, link: string): string {
+  const asignatura = escapeHtml(datos.asignatura);
+  const programa = escapeHtml(datos.programa);
+  const nombre = escapeHtml(datos.paraNombre);
+  const diasVencido = Math.abs(datos.diasRestantes);
+
+  return `
+<div style="font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; background:#F1F5F9; padding:32px 16px;">
+  <div style="max-width:480px; margin:0 auto; background:#FFFFFF; border-radius:16px; overflow:hidden; border:1px solid #E2E8F0;">
+    <div style="background:#0F172A; padding:18px 28px;">
+      <p style="margin:0; color:#FFFFFF; font-size:14px; font-weight:600; letter-spacing:.02em;">
+        Matriz de Seguimiento
+      </p>
+    </div>
+
+    <div style="padding:28px;">
+      <p style="margin:0 0 4px; color:#64748B; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">
+        ${programa}
+      </p>
+      <h1 style="margin:0 0 18px; color:#0F172A; font-size:19px; line-height:1.3;">
+        ${asignatura}
+      </h1>
+
+      <div style="background:#FEF2F2; border:1px solid #FEE2E2; border-radius:10px; padding:14px 16px; margin-bottom:22px;">
+        <p style="margin:0 0 6px; color:#334155; font-size:14px; font-weight:500;">
+          Todavía no se ha entregado el libro${datos.docentes ? ` (${escapeHtml(datos.docentes)})` : ''}
+        </p>
+        <span style="display:inline-block; background:#FEE2E2; color:#B91C1C; font-size:11px; font-weight:700; padding:4px 10px; border-radius:999px;">
+          Fecha tentativa venció hace ${diasVencido} ${diasVencido === 1 ? 'día' : 'días'} (${fechaLegible(datos.bookDueDate)})
+        </span>
+      </div>
+
+      <p style="margin:0 0 24px; color:#475569; font-size:14px; line-height:1.55;">
+        Hola ${nombre}, los docentes habían dado esta fecha como tentativa para la entrega del libro
+        ("Recepción de libro"), pero esa fecha ya pasó y el paso todavía no está terminado.
+      </p>
+
+      <a href="${link}"
+         style="display:inline-block; background:#0F172A; color:#FFFFFF; text-decoration:none;
+                font-size:14px; font-weight:600; padding:12px 22px; border-radius:10px;">
+        Ver la asignatura →
+      </a>
+    </div>
+  </div>
+
+  <p style="max-width:480px; margin:16px auto 0; text-align:center; color:#94A3B8; font-size:11px;">
+    Aviso automático — no hace falta responder a este correo.
+  </p>
+</div>`.trim();
+}
+
+/**
+ * Avisa por correo al encargado de "Libro" que una asignatura no entregó el
+ * libro para la fecha tentativa que los docentes habían dado (el paso
+ * "Recepción de libro" todavía no está en 'terminado'). Nunca lanza.
+ */
+export async function enviarAvisoLibroNoEntregado(datos: AvisoLibroNoEntregado): Promise<void> {
+  const t = getTransporter();
+  if (!t) {
+    console.warn(`[mailer] SMTP no configurado — se omite el aviso de libro no entregado a ${datos.paraEmail}`);
+    return;
+  }
+
+  const link = construirLinkAsignatura(datos.subjectId);
+  const diasVencido = Math.abs(datos.diasRestantes);
+
+  try {
+    const info = await t.sendMail({
+      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      to: datos.paraEmail,
+      subject: `Libro no entregado: ${datos.asignatura}`,
+      text:
+        `Hola ${datos.paraNombre},\n\n` +
+        `Los docentes${datos.docentes ? ` (${datos.docentes})` : ''} habían dado el ${fechaLegible(datos.bookDueDate)} ` +
+        `como fecha tentativa de entrega del libro en la asignatura "${datos.asignatura}" (${datos.programa}), ` +
+        `pero ya pasaron ${diasVencido} día(s) y "Recepción de libro" todavía no está terminado.\n\n` +
+        `Verla en la Matriz de Seguimiento: ${link}\n\n` +
+        `— Matriz de Seguimiento`,
+      html: construirHtmlLibroNoEntregado(datos, link),
+    });
+    console.log(`[mailer] Aviso de libro no entregado enviado a ${datos.paraEmail} (${info.messageId})`);
+  } catch (err) {
+    console.error(`[mailer] No se pudo enviar el aviso de libro no entregado a ${datos.paraEmail}:`, err);
+  }
+}
+
 /**
  * Avisa por correo al encargado de una categoría (OVA, Podcast, Video de
  * contenido, Guías) que la fecha límite de un paso puntual (p. ej. "Creación

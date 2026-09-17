@@ -16,7 +16,9 @@ export function CeldaProceso({ paso, etiqueta, celda, seleccionada, onClick }: P
   const estado = celda?.status ?? 'vacio';
   const e = ESTADOS[estado];
 
-  // Los pasos de decisión muestran la respuesta en vez de la fecha
+  // Los pasos de decisión muestran la respuesta en vez del estado -- el resto
+  // siempre muestra en qué estado está (no solo la fecha, que puede faltar
+  // aunque el paso ya no esté "sin iniciar", p. ej. pendiente jefe sin fecha).
   const pie = paso.isBranchPoint
     ? celda?.branch_value === true
       ? 'Sí hay ajustes'
@@ -24,13 +26,13 @@ export function CeldaProceso({ paso, etiqueta, celda, seleccionada, onClick }: P
         ? 'No hay ajustes'
         : 'Sin decidir'
     : celda?.done_date
-      ? `${fechaCorta(celda.done_date)} · ${celda.initials ?? ''}`
-      : '—';
+      ? `${e.label} · ${fechaCorta(celda.done_date)} · ${celda.initials ?? ''}`
+      : e.label;
 
   return (
     <button
       onClick={onClick}
-      className="min-w-[104px] shrink-0 p-2 rounded-lg text-left transition-shadow"
+      className="min-w-[104px] shrink-0 p-2 rounded-lg text-left cursor-pointer transition hover:shadow-md hover:brightness-95"
       style={{
         background: e.fondo,
         border: e.borde ? '0.5px solid rgba(0,0,0,.12)' : '0.5px solid transparent',

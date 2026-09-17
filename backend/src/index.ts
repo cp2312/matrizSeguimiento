@@ -11,8 +11,11 @@ import { programsRouter } from './routes/programs.js';
 import { subjectsRouter } from './routes/subjects.js';
 import { buildMatrixRouter } from './routes/matrix.js';
 import { encargadosRouter } from './routes/encargados.js';
+import { auditoriaRouter } from './routes/auditoria.js';
+import { exportarRouter } from './routes/exportar.js';
 import { revisarContratosPorVencer } from './lib/contractWarnings.js';
 import { revisarFechasLimite } from './lib/dueDateWarnings.js';
+import { revisarLibroNoEntregado } from './lib/bookWarnings.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -38,6 +41,8 @@ app.use('/api/programs', requireAuth, programsRouter);
 app.use('/api', requireAuth, subjectsRouter);
 app.use('/api', requireAuth, buildMatrixRouter(io));
 app.use('/api', requireAuth, encargadosRouter);
+app.use('/api', requireAuth, auditoriaRouter);
+app.use('/api', requireAuth, exportarRouter);
 
 app.use((err: any, _req: any, res: any, _next: any) => {
   console.error(err);
@@ -78,9 +83,11 @@ io.on('connection', (socket) => {
 const UN_DIA_MS = 24 * 60 * 60 * 1000;
 void revisarContratosPorVencer();
 void revisarFechasLimite();
+void revisarLibroNoEntregado();
 setInterval(() => {
   void revisarContratosPorVencer();
   void revisarFechasLimite();
+  void revisarLibroNoEntregado();
 }, UN_DIA_MS);
 
 httpServer.listen(PORT, () => {

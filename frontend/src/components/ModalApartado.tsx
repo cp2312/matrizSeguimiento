@@ -27,6 +27,9 @@ interface Props {
   /** los videos de esta asignatura los graba el profesor (renombra el bloque a "Video tutorial") */
   videoPorDocente?: boolean;
   onCambiarVideoPorDocente?: (checked: boolean) => void;
+  /** fecha tentativa de entrega del libro (una sola por asignatura, no por docente) */
+  bookDueDate?: string | null;
+  onBookDueDateChanged?: (bookDueDate: string | null) => void;
   onGuardado: (celda: MatrixCell) => void;
   onTeachersChanged: (teachers: SubjectTeacher[]) => void;
   onCerrar: () => void;
@@ -62,7 +65,9 @@ function TileAgregar({ etiqueta, onClick }: { etiqueta: string; onClick: () => v
 export function ModalApartado({
   abierto, subjectId, grupos, celdas, teachers,
   apartadoInicial, bloqueInicial, bloqueLabel, cargando = false,
-  videoPorDocente = false, onCambiarVideoPorDocente, onGuardado, onTeachersChanged, onCerrar, onRecargar,
+  videoPorDocente = false, onCambiarVideoPorDocente,
+  bookDueDate = null, onBookDueDateChanged,
+  onGuardado, onTeachersChanged, onCerrar, onRecargar,
 }: Props) {
   // Un bloque extensible (OVA, Podcast, Video de contenido) puede tener
   // instancias extra ocultas hasta que se agregan a mano -- no se listan acá.
@@ -121,61 +126,61 @@ export function ModalApartado({
     : grupoActivo?.titulo ?? '';
 
   return (
-    <Modal
-      abierto={abierto}
-      titulo={titulo}
-      subtitulo={!cargando && vista === 'detalle' ? `${terminadosActivo} de ${visiblesActivo.length} pasos` : undefined}
-      ancho="grande"
-      onCerrar={onCerrar}
-      accionesTitulo={!cargando ? (
-        <button
-          onClick={() => setVistaManual(vista === 'todos' ? null : 'todos')}
-          className="text-[12px] font-medium text-cyan-700 dark:text-cyan-400 hover:text-cyan-900 dark:hover:text-cyan-300 flex items-center gap-1 shrink-0 mt-0.5"
-        >
-          {vista === 'todos' ? '← Volver' : '▦ Ver todos'}
-        </button>
-      ) : null}
-    >
-      {cargando ? (
-        <p className="text-sm text-slate-400 dark:text-slate-500 py-6 text-center">Cargando…</p>
-      ) : vista === 'todos' ? (
-        <div className="grid sm:grid-cols-2 gap-2 max-h-[65vh] overflow-y-auto pr-1">
-          {entradas.map(([clave, g]) => (
-            <ItemApartado
-              key={clave}
-              titulo={g.titulo}
-              pasos={g.pasos}
-              celdas={celdas}
-              activo={clave === apartado}
-              onClick={() => elegir(clave)}
-            />
-          ))}
-          {siguientesExtra.map((s) => (
-            <TileAgregar key={s.clave} etiqueta={s.etiqueta} onClick={() => elegir(s.clave)} />
-          ))}
-        </div>
-      ) : vista === 'instancias' ? (
-        <div className="grid sm:grid-cols-2 gap-2">
-          {instanciasBloque.map(([clave, g]) => (
-            <ItemApartado
-              key={clave}
-              titulo={g.titulo}
-              pasos={g.pasos}
-              celdas={celdas}
-              activo={clave === apartado}
-              onClick={() => elegir(clave)}
-            />
-          ))}
-          {siguienteExtraDelBloque && (
-            <TileAgregar
-              etiqueta={siguienteExtraDelBloque.etiqueta}
-              onClick={() => elegir(siguienteExtraDelBloque.clave)}
-            />
-          )}
-        </div>
-      ) : grupoActivo && (
-        <div className="flex gap-4 items-start">
-          <div className="flex-1 min-w-0">
+    <>
+      <Modal
+        abierto={abierto}
+        titulo={titulo}
+        subtitulo={!cargando && vista === 'detalle' ? `${terminadosActivo} de ${visiblesActivo.length} pasos` : undefined}
+        ancho="grande"
+        onCerrar={onCerrar}
+        accionesTitulo={!cargando ? (
+          <button
+            onClick={() => setVistaManual(vista === 'todos' ? null : 'todos')}
+            className="text-[12px] font-medium text-cyan-700 dark:text-cyan-400 hover:text-cyan-900 dark:hover:text-cyan-300 flex items-center gap-1 shrink-0 mt-0.5"
+          >
+            {vista === 'todos' ? '← Volver' : '▦ Ver todos'}
+          </button>
+        ) : null}
+      >
+        {cargando ? (
+          <p className="text-sm text-slate-400 dark:text-slate-500 py-6 text-center">Cargando…</p>
+        ) : vista === 'todos' ? (
+          <div className="grid sm:grid-cols-2 gap-2 max-h-[65vh] overflow-y-auto pr-1">
+            {entradas.map(([clave, g]) => (
+              <ItemApartado
+                key={clave}
+                titulo={g.titulo}
+                pasos={g.pasos}
+                celdas={celdas}
+                activo={clave === apartado}
+                onClick={() => elegir(clave)}
+              />
+            ))}
+            {siguientesExtra.map((s) => (
+              <TileAgregar key={s.clave} etiqueta={s.etiqueta} onClick={() => elegir(s.clave)} />
+            ))}
+          </div>
+        ) : vista === 'instancias' ? (
+          <div className="grid sm:grid-cols-2 gap-2">
+            {instanciasBloque.map(([clave, g]) => (
+              <ItemApartado
+                key={clave}
+                titulo={g.titulo}
+                pasos={g.pasos}
+                celdas={celdas}
+                activo={clave === apartado}
+                onClick={() => elegir(clave)}
+              />
+            ))}
+            {siguienteExtraDelBloque && (
+              <TileAgregar
+                etiqueta={siguienteExtraDelBloque.etiqueta}
+                onClick={() => elegir(siguienteExtraDelBloque.clave)}
+              />
+            )}
+          </div>
+        ) : grupoActivo && (
+          <div className="min-w-0">
             {BLOQUES_VIDEO.has(grupoActivo.pasos[0]?.blockKey) && onCambiarVideoPorDocente && (
               <label className="flex items-center gap-2 mb-3 text-[12px] text-slate-600 dark:text-slate-300 cursor-pointer">
                 <input
@@ -197,23 +202,27 @@ export function ModalApartado({
               soloContenido
             />
           </div>
+        )}
+      </Modal>
 
-          {pasoActivo && (
-            <div className="w-72 shrink-0">
-              <PanelCelda
-                subjectId={subjectId}
-                paso={pasoActivo}
-                celda={celdas[pasoActivo.path]}
-                teachers={teachers}
-                onGuardado={onGuardado}
-                onTeachersChanged={onTeachersChanged}
-                onCerrar={() => setPasoSeleccionado(null)}
-                onRecargar={onRecargar}
-              />
-            </div>
-          )}
-        </div>
+      {/* Ventana propia encima de la del apartado -- así el formulario de un
+          paso no compite por espacio con la lista de pasos de al lado. */}
+      {pasoActivo && (
+        <Modal abierto titulo="" ancho="angosto" onCerrar={() => setPasoSeleccionado(null)}>
+          <PanelCelda
+            subjectId={subjectId}
+            paso={pasoActivo}
+            celda={celdas[pasoActivo.path]}
+            teachers={teachers}
+            bookDueDate={bookDueDate}
+            onGuardado={onGuardado}
+            onTeachersChanged={onTeachersChanged}
+            onBookDueDateChanged={(fecha) => onBookDueDateChanged?.(fecha)}
+            onCerrar={() => setPasoSeleccionado(null)}
+            onRecargar={onRecargar}
+          />
+        </Modal>
       )}
-    </Modal>
+    </>
   );
 }

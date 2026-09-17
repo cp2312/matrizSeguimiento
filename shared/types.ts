@@ -131,6 +131,10 @@ export interface Subject {
   general_comment: string | null;
   /** los videos los hace un profesor (no el equipo): los bloques de video se muestran como "Video tutorial" */
   videos_por_docente: boolean;
+  /** fecha tentativa (dada por los docentes) de entrega del libro -- una sola por asignatura, solo se entrega un libro */
+  book_due_date: string | null;
+  /** última vez que se avisó que no se entregó el libro para esa fecha tentativa */
+  book_due_warning_sent_at: string | null;
   archived: boolean;
   created_at: string;
   updated_at: string;

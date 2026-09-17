@@ -74,9 +74,14 @@ export function Layout({ children, ancho = 'normal' }: Props) {
         <nav className="inline-flex items-center gap-1">
           <EnlaceNav a="/" activo={pathname === '/'}>Programas</EnlaceNav>
           {usuario?.role === 'administrador' && (
-            <EnlaceNav a="/usuarios" activo={pathname.startsWith('/usuarios')}>
-              Usuarios
-            </EnlaceNav>
+            <>
+              <EnlaceNav a="/usuarios" activo={pathname.startsWith('/usuarios')}>
+                Usuarios
+              </EnlaceNav>
+              <EnlaceNav a="/actividad" activo={pathname.startsWith('/actividad')}>
+                Actividad
+              </EnlaceNav>
+            </>
           )}
         </nav>
       </Encabezado>

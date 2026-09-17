@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useFetch } from '../hooks/useFetch';
 import { api } from '../lib/api';
+import { token } from '../lib/token';
 import { Layout } from '../components/Layout';
 import { Boton } from '../components/ui/Boton';
 import { Campo } from '../components/ui/Campo';
@@ -53,7 +54,7 @@ function TipoSwatch({ tipo, variante = 'lista' }: { tipo: ProgramType; variante?
     const texto = esHibrido ? '#1d4ed8' : color!;
     return (
       <span
-        className="inline-flex items-center gap-2 rounded-full pl-2.5 pr-3 py-1 text-[13px] font-semibold select-none"
+        className="inline-flex items-center gap-2 rounded-full pl-2.5 pr-3 py-1 text-[13px] font-semibold select-none whitespace-nowrap"
         style={{ background: bg, border: `1px solid ${borde}`, color: texto }}
       >
         {swatch}
@@ -102,6 +103,17 @@ function IconoLupa({ className }: { className?: string }) {
   );
 }
 
+function IconoDescarga() {
+  return (
+    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="7 10 12 15 17 10" />
+      <line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+  );
+}
+
 /** Chevron que aparece junto al nombre para marcar que la fila lleva a la matriz */
 function IconoFlecha() {
   return (
@@ -124,6 +136,8 @@ export default function ListadoProgramas() {
   // Solo se usa mientras filtro === 'virtual' -- sub-filtro de pregrado/posgrado
   const [nivelFiltro, setNivelFiltro] = useState<FiltroNivel>('todos');
   const [busqueda, setBusqueda] = useState('');
+  const [exportando, setExportando] = useState(false);
+  const [errorExportar, setErrorExportar] = useState('');
 
   const navigate = useNavigate();
   const activos = programas?.filter((p) => !p.archived).length ?? 0;
@@ -139,12 +153,48 @@ export default function ListadoProgramas() {
     setNivelFiltro('todos');
   }
 
+  // El endpoint devuelve el archivo binario directo (no JSON), así que no se
+  // puede usar el helper `api` normal -- este pide con fetch a mano, arma un
+  // link temporal con el blob recibido y lo "clickea" solo para bajarlo.
+  async function exportarExcel() {
+    setExportando(true);
+    setErrorExportar('');
+    try {
+      const res = await fetch('/api/exportar', {
+        headers: { Authorization: `Bearer ${token.get()}` },
+      });
+      if (!res.ok) {
+        const cuerpo = await res.json().catch(() => ({}));
+        throw new Error(cuerpo.error ?? 'No se pudo generar el Excel');
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const enlace = document.createElement('a');
+      enlace.href = url;
+      enlace.download = `matriz-seguimiento-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(enlace);
+      enlace.click();
+      enlace.remove();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      setErrorExportar(err.message);
+    } finally {
+      setExportando(false);
+    }
+  }
+
   return (
     <Layout>
       <TituloPagina
         titulo="Programas"
         subtitulo={`${activos} ${activos === 1 ? 'programa' : 'programas'}`}
       >
+        <Boton onClick={exportarExcel} disabled={exportando} title="Descarga un Excel con todos los programas, una hoja por programa">
+          <span className="inline-flex items-center gap-1.5">
+            <IconoDescarga />
+            {exportando ? 'Generando…' : 'Exportar a Excel'}
+          </span>
+        </Boton>
         <Boton variante="primario" onClick={() => setCreando(true)}>
           Nuevo programa
         </Boton>
@@ -152,6 +202,7 @@ export default function ListadoProgramas() {
 
       {cargando && <Cargando />}
       {error && <Alerta>{error}</Alerta>}
+      {errorExportar && <Alerta>{errorExportar}</Alerta>}
 
       {!cargando && !error && programas && programas.length === 0 && (
         <Vacio mensaje="Todavía no hay programas.">
@@ -221,7 +272,7 @@ export default function ListadoProgramas() {
                     <th className="text-left font-medium text-[11px] uppercase tracking-wide text-slate-400 dark:text-slate-500 px-4 py-3">
                       Nombre
                     </th>
-                    <th className="w-32 text-left font-medium text-[11px] uppercase tracking-wide text-slate-400 dark:text-slate-500 px-2 py-3">
+                    <th className="w-60 text-left font-medium text-[11px] uppercase tracking-wide text-slate-400 dark:text-slate-500 px-2 py-3">
                       Tipo
                     </th>
                     <th className="w-36 text-left font-medium text-[11px] uppercase tracking-wide text-slate-400 dark:text-slate-500 px-2 py-3">
@@ -251,18 +302,20 @@ export default function ListadoProgramas() {
                           <p className="text-[12.5px] text-slate-400 mt-0.5 line-clamp-1">{p.notes}</p>
                         )}
                       </td>
-                      <td className="px-2">
-                        <TipoSwatch tipo={p.type} variante="pill" />
-                        {p.type === 'virtual' && p.academic_level && (
-                          <span className="mt-2 inline-flex items-center gap-1 rounded-md bg-violet-100 dark:bg-violet-500/15
-                                           text-violet-700 dark:text-violet-300 px-1.5 py-0.5 text-[12px] font-semibold">
-                            <span className="w-1.5 h-1.5 rounded-full bg-violet-500 shrink-0" />
-                            {ETIQUETA_NIVEL[p.academic_level]}
-                          </span>
-                        )}
-                        {p.archived && (
-                          <span className="block text-[11px] text-slate-400 mt-1">Archivado</span>
-                        )}
+                      <td className="px-2 py-2">
+                        <div className="flex flex-col items-start gap-1.5">
+                          <TipoSwatch tipo={p.type} variante="pill" />
+                          {p.type === 'virtual' && p.academic_level && (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-violet-100 dark:bg-violet-500/15
+                                             text-violet-700 dark:text-violet-300 px-1.5 py-0.5 text-[12px] font-semibold">
+                              <span className="w-1.5 h-1.5 rounded-full bg-violet-500 shrink-0" />
+                              {ETIQUETA_NIVEL[p.academic_level]}
+                            </span>
+                          )}
+                          {p.archived && (
+                            <span className="text-[11px] text-slate-400">Archivado</span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-2 text-slate-500 dark:text-slate-400 text-[13px] tabular-nums whitespace-nowrap">
                         {formatearFecha(p.created_at)}

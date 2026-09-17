@@ -8,6 +8,7 @@ import ListadoProgramas from './pages/ListadoProgramas';
 import Programa from './pages/Programas';
 import Asignatura from './pages/Asignatura';
 import Configuracion from './pages/Configuracion';
+import Actividad from './pages/Actividad';
 
 function Protegida({ children }: { children: React.ReactNode }) {
   const { usuario, cargando } = useAuth();
@@ -60,6 +61,11 @@ export default function App() {
           <Route
             path="/usuarios"
             element={<Protegida><SoloAdmin><Usuarios /></SoloAdmin></Protegida>}
+          />
+
+          <Route
+            path="/actividad"
+            element={<Protegida><SoloAdmin><Actividad /></SoloAdmin></Protegida>}
           />
 
           <Route path="*" element={<Navigate to="/" replace />} />

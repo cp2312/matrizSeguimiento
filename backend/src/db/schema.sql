@@ -190,6 +190,13 @@ CREATE TABLE subjects (
   -- de video se muestran como "Video tutorial" en toda la interfaz.
   videos_por_docente BOOLEAN NOT NULL DEFAULT FALSE,
 
+  -- Fecha tentativa (dada por los docentes) de entrega del libro -- una sola
+  -- por asignatura, no una por docente, porque solo se entrega un libro. Si
+  -- llega esa fecha y "RecepciÃ³n de libro" todavÃ­a no estÃ¡ en 'terminado',
+  -- se avisa por correo al encargado de "Libro" (ver bookWarnings.ts).
+  book_due_date             DATE,
+  book_due_warning_sent_at  TIMESTAMPTZ,
+
   archived   BOOLEAN     NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -210,6 +217,7 @@ COMMENT ON COLUMN subjects.book_name            IS 'Se llena solo cuando el libr
 COMMENT ON COLUMN subjects.credits              IS 'De 1 a 5. Define cuantas OVAs, videos de contenido y guias se generan: 1 por credito';
 COMMENT ON COLUMN subjects.hybrid_program_label IS 'Nombre del programa asociado; solo en programas presenciales con asignatura virtual';
 COMMENT ON COLUMN subjects.rights_email_date    IS 'Fecha de envio de correos de firma de derechos';
+COMMENT ON COLUMN subjects.book_due_date        IS 'Fecha tentativa (dada por los docentes) de entrega del libro';
 
 
 -- ----------------------------------------------------------------------------

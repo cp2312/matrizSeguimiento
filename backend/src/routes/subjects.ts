@@ -221,11 +221,15 @@ subjectsRouter.patch('/subjects/:id', async (req, res) => {
   try {
     const resultado = await withTransaction(async (client) => {
       const { rows } = await client.query<Subject>(
+        // Si la fecha tentativa de entrega del libro cambió, se rehabilita el
+        // aviso de "libro no entregado" -- si no, nunca volvería a avisar
+        // aunque se dé una nueva fecha.
         `UPDATE subjects SET
            semester=$1, name=$2, book_name=$3, credits=$4,
            modality=$5, hybrid_program_label=$6, rights_email_date=$7,
-           general_comment=$8, archived=$9, videos_por_docente=$10
-         WHERE id=$11 RETURNING *`,
+           general_comment=$8, archived=$9, videos_por_docente=$10, book_due_date=$11,
+           book_due_warning_sent_at = CASE WHEN book_due_date IS DISTINCT FROM $11 THEN NULL ELSE book_due_warning_sent_at END
+         WHERE id=$12 RETURNING *`,
         [
           valor('semester', 'semester'),
           valor('name', 'name'),
@@ -237,6 +241,7 @@ subjectsRouter.patch('/subjects/:id', async (req, res) => {
           valor('generalComment', 'general_comment'),
           valor('archived', 'archived'),
           valor('videosPorDocente', 'videos_por_docente'),
+          valor('bookDueDate', 'book_due_date'),
           req.params.id,
         ]
       );

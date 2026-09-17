@@ -18,8 +18,11 @@ interface Props {
   paso: ResolvedStep;
   celda?: MatrixCell;
   teachers: SubjectTeacher[];
+  /** fecha tentativa de entrega del libro (una sola por asignatura, no por docente) */
+  bookDueDate: string | null;
   onGuardado: (celda: MatrixCell) => void;
   onTeachersChanged: (teachers: SubjectTeacher[]) => void;
+  onBookDueDateChanged: (bookDueDate: string | null) => void;
   onCerrar: () => void;
   onRecargar?: () => void;
 }
@@ -159,7 +162,71 @@ function DocentesContrato({ subjectId, teachers, onCambiados, onCeldaActualizada
   );
 }
 
-export function PanelCelda({ subjectId, paso, celda, teachers, onGuardado, onTeachersChanged, onCerrar, onRecargar }: Props) {
+/** Solo se entrega un libro por asignatura -- a diferencia del contrato, esta
+ *  fecha no es por docente, así que vive aparte y se guarda sola. */
+function FechaEntregaLibro({ subjectId, bookDueDate, onCambiada }: {
+  subjectId: number;
+  bookDueDate: string | null;
+  onCambiada: (bookDueDate: string | null) => void;
+}) {
+  const [edicion, setEdicion] = useState<string | null>(null);
+  const valorActual = edicion ?? (bookDueDate ?? '');
+  const hayCambios = edicion !== null && edicion !== (bookDueDate ?? '');
+
+  async function guardar() {
+    const nuevaFecha = valorActual || null;
+    const resultado = await api.patch<{ book_due_date: string | null }>(
+      `/subjects/${subjectId}`, { bookDueDate: nuevaFecha }
+    );
+    onCambiada(resultado.book_due_date);
+    setEdicion(null);
+  }
+
+  return (
+    <div className="bg-slate-50 dark:bg-slate-800/60 rounded-md px-2.5 py-2 space-y-1.5 mb-3">
+      <label className="block">
+        <span className="block text-[10px] text-slate-400 dark:text-slate-500 mb-0.5">
+          Fecha tentativa de entrega del libro
+        </span>
+        <input
+          type="date"
+          value={valorActual}
+          onChange={(e) => setEdicion(e.target.value)}
+          className="w-full h-7 px-1.5 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 dark:text-slate-100 text-[11px] outline-none focus:ring-2 focus:ring-slate-400"
+        />
+        <span className="block text-[10px] text-slate-400 dark:text-slate-500 mt-1">
+          Una sola por asignatura (solo se entrega un libro). Si llega esa fecha y "Recepción de libro"
+          sigue sin terminar, se avisa por correo al encargado de Libro.
+        </span>
+      </label>
+
+      {hayCambios && (
+        <div className="flex items-center justify-end gap-2 pt-0.5">
+          <button
+            type="button"
+            onClick={() => setEdicion(null)}
+            className="text-[11px] text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100"
+          >
+            Deshacer
+          </button>
+          <BotonConfirmar
+            etiqueta="Guardar"
+            etiquetaConfirmar="Sí, guardar"
+            titulo="Confirmar fecha de entrega"
+            mensaje="¿Guardar esta fecha tentativa de entrega del libro?"
+            onConfirmar={guardar}
+            className="h-6 px-2 text-[11px]"
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function PanelCelda({
+  subjectId, paso, celda, teachers, bookDueDate,
+  onGuardado, onTeachersChanged, onBookDueDateChanged, onCerrar, onRecargar,
+}: Props) {
   const { step, path } = paso;
   const esTipoContrato = path === 'contrato.tipo_contrato';
 
@@ -243,7 +310,7 @@ export function PanelCelda({ subjectId, paso, celda, teachers, onGuardado, onTea
   }
 
   return (
-    <div className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-3.5">
+    <>
       <div className="flex items-start justify-between gap-2 mb-3">
         <div className="min-w-0">
           <p className="text-[13px] font-medium text-slate-800 dark:text-slate-100 leading-snug">{etiquetaPaso(step, paso.instance)}</p>
@@ -259,12 +326,15 @@ export function PanelCelda({ subjectId, paso, celda, teachers, onGuardado, onTea
       </div>
 
       {esTipoContrato && (
-        <DocentesContrato
-          subjectId={subjectId}
-          teachers={teachers}
-          onCambiados={onTeachersChanged}
-          onCeldaActualizada={onGuardado}
-        />
+        <>
+          <FechaEntregaLibro subjectId={subjectId} bookDueDate={bookDueDate} onCambiada={onBookDueDateChanged} />
+          <DocentesContrato
+            subjectId={subjectId}
+            teachers={teachers}
+            onCambiados={onTeachersChanged}
+            onCeldaActualizada={onGuardado}
+          />
+        </>
       )}
 
       {step.isBranchPoint ? (
@@ -410,7 +480,7 @@ export function PanelCelda({ subjectId, paso, celda, teachers, onGuardado, onTea
           />
         </div>
       </div>
-    </div>
+    </>
   );
 }
 

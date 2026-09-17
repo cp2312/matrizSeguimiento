@@ -11,9 +11,11 @@ interface Props {
   celdas: Record<string, MatrixCell>;
   teachers: SubjectTeacher[];
   videoPorDocente: boolean;
+  bookDueDate: string | null;
   onGuardado: (celda: MatrixCell) => void;
   onTeachersChanged: (teachers: SubjectTeacher[]) => void;
   onCambiarVideoPorDocente: (checked: boolean) => void;
+  onBookDueDateChanged: (bookDueDate: string | null) => void;
   /** apartado con el que abrir de una vez (p. ej. el link "?apartado=" de un correo de aviso) */
   apartadoInicial?: string | null;
   onRecargar?: () => void;
@@ -25,8 +27,8 @@ interface Props {
  * apartado en una ventana flotante (ver ModalApartado).
  */
 export function ApartadosAsignatura({
-  subjectId, grupos, celdas, teachers, videoPorDocente,
-  onGuardado, onTeachersChanged, onCambiarVideoPorDocente, apartadoInicial, onRecargar,
+  subjectId, grupos, celdas, teachers, videoPorDocente, bookDueDate,
+  onGuardado, onTeachersChanged, onCambiarVideoPorDocente, onBookDueDateChanged, apartadoInicial, onRecargar,
 }: Props) {
   const [apartado, setApartado] = useState<string | null>(apartadoInicial ?? null);
 
@@ -66,6 +68,8 @@ export function ApartadosAsignatura({
         apartadoInicial={apartado}
         videoPorDocente={videoPorDocente}
         onCambiarVideoPorDocente={onCambiarVideoPorDocente}
+        bookDueDate={bookDueDate}
+        onBookDueDateChanged={onBookDueDateChanged}
         onGuardado={onGuardado}
         onTeachersChanged={onTeachersChanged}
         onCerrar={() => setApartado(null)}

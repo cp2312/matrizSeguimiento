@@ -99,6 +99,12 @@ const COMMANDS = {
     console.log('click', sel);
   },
 
+  async hover(sel) {
+    const p = await ensurePage();
+    await p.hover(sel);
+    console.log('hover', sel);
+  },
+
   async 'click-text'(text) {
     const p = await ensurePage();
     await p.getByText(text, { exact: false }).first().click();

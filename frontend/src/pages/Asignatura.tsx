@@ -64,6 +64,12 @@ export default function Asignatura() {
     recargar();
   }
 
+  // FechaEntregaLibro (dentro de PanelCelda) ya guarda el cambio por su cuenta
+  // -- esto solo refresca el resto de la página con el valor nuevo.
+  function bookDueDateCambiada() {
+    recargar();
+  }
+
   async function confirmarEliminar() {
     setBorrando(true);
     setErrorBorrado('');
@@ -133,9 +139,11 @@ export default function Asignatura() {
           celdas={celdas}
           teachers={asignatura.teachers}
           videoPorDocente={asignatura.videos_por_docente}
+          bookDueDate={asignatura.book_due_date}
           onGuardado={aplicarCelda}
           onTeachersChanged={aplicarTeachers}
           onCambiarVideoPorDocente={cambiarVideoPorDocente}
+          onBookDueDateChanged={bookDueDateCambiada}
           apartadoInicial={searchParams.get('apartado')}
           onRecargar={recargar}
         />
