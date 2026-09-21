@@ -78,9 +78,9 @@ export default function Login() {
           />
           <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 via-transparent to-transparent" />
           <div className="absolute left-6 bottom-5 right-6">
-            <div className="inline-flex items-center bg-white/95 dark:bg-slate-950/80
+            <div className="inline-flex items-center bg-white/95 dark:bg-white/95
                             px-4 py-2.5 rounded-2xl shadow-lg shadow-slate-950/30 ring-1
-                            ring-black/5 dark:ring-white/10 backdrop-blur-sm">
+                            ring-black/5 dark:ring-black/10 backdrop-blur-sm">
               <img
                 src="https://campusvirtual.santototunja.edu.co/assets/Copia-de-FInal-Logo-campusprueba2-2-1-scaled-CAabIrYv.png"
                 alt="Logo Campus Virtual"
@@ -95,7 +95,7 @@ export default function Login() {
             <img
               src="https://campusvirtual.santototunja.edu.co/assets/Copia-de-FInal-Logo-campusprueba2-2-1-scaled-CAabIrYv.png"
               alt="Logo Campus Virtual"
-              className="w-56 max-w-[75%] h-auto object-contain select-none dark:brightness-0 dark:invert"
+              className="w-56 max-w-[75%] h-auto object-contain select-none dark:bg-white dark:rounded-2xl dark:px-6 dark:py-3"
             />
           </div>
 

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useFetch } from '../hooks/useFetch';
 import { api } from '../lib/api';
-import { token } from '../lib/token';
+import { descargarMatrizExcel } from '../lib/exportar';
 import { Layout } from '../components/Layout';
 import { Boton } from '../components/ui/Boton';
 import { Campo } from '../components/ui/Campo';
@@ -163,29 +163,11 @@ export default function ListadoProgramas() {
     setNivelFiltro('todos');
   }
 
-  // El endpoint devuelve el archivo binario directo (no JSON), así que no se
-  // puede usar el helper `api` normal -- este pide con fetch a mano, arma un
-  // link temporal con el blob recibido y lo "clickea" solo para bajarlo.
   async function exportarExcel() {
     setExportando(true);
     setErrorExportar('');
     try {
-      const res = await fetch('/api/exportar', {
-        headers: { Authorization: `Bearer ${token.get()}` },
-      });
-      if (!res.ok) {
-        const cuerpo = await res.json().catch(() => ({}));
-        throw new Error(cuerpo.error ?? 'No se pudo generar el Excel');
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const enlace = document.createElement('a');
-      enlace.href = url;
-      enlace.download = `matriz-seguimiento-${new Date().toISOString().slice(0, 10)}.xlsx`;
-      document.body.appendChild(enlace);
-      enlace.click();
-      enlace.remove();
-      URL.revokeObjectURL(url);
+      await descargarMatrizExcel();
     } catch (err) {
       setErrorExportar(err instanceof Error ? err.message : 'Ocurrió un error');
     } finally {

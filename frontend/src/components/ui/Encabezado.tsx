@@ -13,7 +13,7 @@ export function Encabezado({ children, acciones }: Props) {
                         backdrop-blur-xl transition-shadow
                         shadow-[0_8px_30px_-6px_rgba(15,23,42,0.12)] dark:shadow-[0_8px_30px_-6px_rgba(0,0,0,0.5)]
                         supports-[backdrop-filter]:bg-white/75 supports-[backdrop-filter]:dark:bg-slate-900/70">
-          <img src="https://campusvirtual.santototunja.edu.co/assets/Copia-de-FInal-Logo-campusprueba2-2-1-scaled-CAabIrYv.png" alt="Matriz de seguimiento" className="h-9 w-auto shrink-0 px-1" />
+          <img src="https://campusvirtual.santototunja.edu.co/assets/Copia-de-FInal-Logo-campusprueba2-2-1-scaled-CAabIrYv.png" alt="Matriz de seguimiento" className="h-9 w-auto shrink-0 px-1 dark:bg-white dark:rounded-lg dark:py-1" />
           <nav className="flex-1 flex items-center justify-center gap-1 min-w-0">
             {children}
           </nav>

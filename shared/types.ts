@@ -276,6 +276,12 @@ export const CATEGORIAS_ENCARGADO: Record<CategoriaEncargado, string> = {
   jefe: 'Jefe (todo lo que quede "Pendiente jefe")',
 };
 
+/** Configuración global de la app (una sola fila) -- ver app_settings */
+export interface AppSettings {
+  /** Link externo a la matriz de seguimiento en Excel que se manejaba antes; null si nadie lo cargó */
+  matrizExcelUrl: string | null;
+}
+
 // ---- Eventos de Socket.IO ----
 
 export interface CellUpdatePayload {

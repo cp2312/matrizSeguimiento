@@ -417,6 +417,30 @@ CREATE TRIGGER trg_subject_category_owners_touch BEFORE UPDATE ON subject_catego
   FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 
 
+-- ----------------------------------------------------------------------------
+--  app_settings
+--  Configuracion global de la app, una sola fila (id fijo en 1). Por ahora
+--  solo guarda el link externo a la matriz de seguimiento en Excel que se
+--  manejaba antes de esta app, para que el administrador tenga acceso rapido.
+-- ----------------------------------------------------------------------------
+CREATE TABLE app_settings (
+  id              SMALLINT PRIMARY KEY DEFAULT 1,
+  matriz_excel_url TEXT,
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_by      INTEGER REFERENCES users(id) ON DELETE SET NULL,
+
+  CONSTRAINT chk_app_settings_fila_unica CHECK (id = 1)
+);
+
+COMMENT ON TABLE  app_settings                  IS 'Configuracion global de la app -- una sola fila';
+COMMENT ON COLUMN app_settings.matriz_excel_url IS 'Link externo a la matriz de seguimiento en Excel que se manejaba antes';
+
+INSERT INTO app_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
+CREATE TRIGGER trg_app_settings_touch BEFORE UPDATE ON app_settings
+  FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+
 -- ============================================================================
 --  4. INDICES
 -- ============================================================================
