@@ -197,3 +197,99 @@ pm2 restart matriz-api
 ```
 
 Nginx no necesita reiniciarse para los cambios del frontend -- son archivos estáticos, se ven apenas termina el `build`.
+
+## 11. CI/CD: que se actualice solo al hacer push a `main`
+
+Con esto, cada vez que se sube algo a `main` en GitHub, un workflow de GitHub Actions entra por SSH al servidor y corre exactamente los mismos pasos de "Actualizar a una versión nueva" de arriba -- ya no hace falta conectarse a mano cada vez.
+
+### 11.1 Generar una llave SSH solo para el deploy
+
+En tu máquina (no en el servidor):
+
+```bash
+ssh-keygen -t ed25519 -C "deploy-matriz-seguimiento" -f ./deploy_key -N ""
+```
+
+Esto deja dos archivos: `deploy_key` (privada, nunca se sube a ningún lado) y `deploy_key.pub` (pública).
+
+Copiar la pública al servidor, al usuario que ya usaste en los pasos 3-7 (el dueño de `/var/www/matriz-seguimiento`):
+
+```bash
+ssh-copy-id -i ./deploy_key.pub tu-usuario@tu-servidor
+```
+
+Probar que funciona antes de seguir:
+
+```bash
+ssh -i ./deploy_key tu-usuario@tu-servidor "echo listo"
+```
+
+### 11.2 Cargar los secretos en GitHub
+
+En el repo: **Settings → Secrets and variables → Actions → New repository secret**. Crear estos tres:
+
+| Nombre | Valor |
+|---|---|
+| `DEPLOY_HOST` | IP o dominio del servidor |
+| `DEPLOY_USER` | el usuario SSH del paso anterior (el dueño de `/var/www/matriz-seguimiento`) |
+| `DEPLOY_SSH_KEY` | el contenido completo de `deploy_key` (la privada) |
+
+Después de cargarla, borrá `deploy_key`/`deploy_key.pub` de tu máquina o guardalas en un lugar seguro -- ya no las necesitás sueltas.
+
+### 11.3 El workflow
+
+Crear `.github/workflows/deploy.yml` en el repo:
+
+```yaml
+name: Deploy a producción
+
+on:
+  push:
+    branches: [main]
+
+# Si se hacen dos push seguidos, cancela el deploy anterior en vez de
+# encolarlos -- siempre termina corriendo el más nuevo.
+concurrency:
+  group: deploy-produccion
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Conectar por SSH y actualizar el servidor
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -e
+            cd /var/www/matriz-seguimiento
+
+            ANTES=$(git rev-parse HEAD)
+            git pull origin main
+            npm install
+
+            # Aviso si el pull trajo migraciones nuevas -- esas siempre se
+            # aplican a mano con psql, el workflow no las corre solo.
+            if ! git diff --quiet "$ANTES" HEAD -- backend/src/db/migrations/; then
+              echo "⚠️  Hay migraciones nuevas en backend/src/db/migrations/ -- aplicalas a mano con psql antes de confiar en el deploy."
+            fi
+
+            npm run build -w backend
+            npm run build -w frontend
+            pm2 restart matriz-api
+```
+
+Con esto ya alcanza: hacer merge a `main` dispara el workflow, que compila y reinicia `matriz-api` solo. Se puede ver el progreso (y los logs, incluido el aviso de migraciones) en la pestaña **Actions** del repo.
+
+<details>
+<summary>Si el firewall del servidor no deja entrar SSH desde GitHub Actions</summary>
+
+Los runners de GitHub Actions usan IPs que cambian, así que no se pueden dejar fijas en el firewall. Si el servidor solo acepta SSH desde IPs conocidas, hay dos salidas:
+
+- Abrir el puerto SSH a cualquier IP pero **solo** para este usuario de deploy, con la llave de arriba (sin contraseña habilitada) y, si se puede, con `fail2ban` corriendo.
+- Cambiar de enfoque: en vez de que GitHub entre al servidor, que el servidor "pregunte" solo cada tanto (`git fetch` + comparar contra `origin/main` en un cronjob o un timer de systemd) y se actualice si hay algo nuevo -- más lento que el push directo, pero no requiere abrir SSH hacia afuera.
+
+</details>
