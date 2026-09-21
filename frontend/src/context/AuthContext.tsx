@@ -28,7 +28,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   function logout() {
     token.clear();
     setUsuario(null);
-    location.href = '/login';
+    location.href = `${import.meta.env.BASE_URL}login`;
   }
 
   async function actualizarAvatar(avatar: string | null): Promise<string | null> {

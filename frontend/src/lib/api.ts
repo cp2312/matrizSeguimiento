@@ -75,7 +75,7 @@ async function ensureValidToken(): Promise<string | null> {
         processQueue(err as Error, null);
         token.clear();
         const destino = location.pathname + location.search;
-        location.href = `/login?from=${encodeURIComponent(destino)}`;
+        location.href = `${import.meta.env.BASE_URL}login?from=${encodeURIComponent(destino)}`;
         throw err;
       } finally {
         isRefreshing = false;
@@ -132,7 +132,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
         processQueue(err as Error, null);
         token.clear();
         const destino = location.pathname + location.search;
-        location.href = `/login?from=${encodeURIComponent(destino)}`;
+        location.href = `${import.meta.env.BASE_URL}login?from=${encodeURIComponent(destino)}`;
         throw new ApiError(401, 'Sesión expirada');
       } finally {
         isRefreshing = false;
