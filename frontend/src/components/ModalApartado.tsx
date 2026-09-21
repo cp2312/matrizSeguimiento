@@ -213,16 +213,14 @@ export function ModalApartado({
         )}
       </Modal>
 
-      {/* Ventana propia encima de la del apartado -- así el formulario de un
-          paso no compite por espacio con la lista de pasos de al lado.
-          "Tipo de contrato" va más ancha (mediano) para que los docentes se
-          acomoden uno al lado del otro en vez de apilarse y obligar a
-          scrollear tanto. */}
+      {/* El formulario del paso se muestra como un panel anclado al borde
+          inferior de la pantalla, SIN capa oscura: así no tapa el modal del
+          apartado que ya está abierto y se ve dónde se está editando. */}
       {pasoActivo && (
         <Modal
           abierto
           titulo=""
-          ancho={pasoActivo.path === 'contrato.tipo_contrato' ? 'mediano' : 'angosto'}
+          abajo
           onCerrar={cerrarPanel}
         >
           <PanelCelda

@@ -29,6 +29,10 @@ interface Props {
    *  max-w-xl, para un popup chico con contenido en columnas (p. ej. varios
    *  docentes uno al lado del otro) que si no quedaría muy alto. */
   ancho?: 'normal' | 'grande' | 'angosto' | 'mediano';
+  /** sin capa oscura, un panel anclado al borde inferior de la pantalla en vez
+   *  de un modal centrado -- para el formulario de una celda, así no tapa el
+   *  modal del apartado que ya está abierto. */
+  abajo?: boolean;
   /** contenido extra junto al título, p. ej. un botón de acción */
   accionesTitulo?: React.ReactNode;
   onCerrar: () => void;
@@ -46,7 +50,7 @@ const ANCHOS = {
 };
 
 export function Modal({
-  abierto, titulo, subtitulo, ancho = 'normal', accionesTitulo, onCerrar, children,
+  abierto, titulo, subtitulo, ancho = 'normal', abajo = false, accionesTitulo, onCerrar, children,
 }: Props) {
   useEffect(() => {
     if (!abierto) return;
@@ -59,6 +63,25 @@ export function Modal({
   }, [abierto, onCerrar]);
 
   if (!abierto) return null;
+
+  if (abajo) {
+    return (
+      <div className="fixed inset-x-0 bottom-0 z-50 flex justify-center px-4 pb-4 pointer-events-none">
+        <div
+          className="pointer-events-auto w-full max-w-xl bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 p-5 max-h-[80vh] overflow-y-auto"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {titulo && (
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <h2 className="text-base font-medium text-slate-800 dark:text-slate-100">{titulo}</h2>
+              {accionesTitulo}
+            </div>
+          )}
+          {children}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
