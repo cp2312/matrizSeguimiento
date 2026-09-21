@@ -33,7 +33,7 @@ function SoloAdmin({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/matriz_seguimiento">
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<Login />} />
