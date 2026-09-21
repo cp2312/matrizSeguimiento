@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useFetch } from '../hooks/useFetch';
 import { api } from '../lib/api';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
 import { Layout } from '../components/Layout';
 import { Boton } from '../components/ui/Boton';
 import { Campo } from '../components/ui/Campo';
@@ -134,9 +134,13 @@ function EncargadosPorCategoria({ usuarios }: { usuarios: UsuarioFila[] }) {
     <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 mt-5">
       <p className="text-sm font-medium text-slate-800 dark:text-slate-100">Encargados por categoría</p>
       <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 mb-3">
-        Tipo de contrato, Podcast, Cuestionario final y Guías avisan a su encargado cuando uno de
-        sus pasos queda "En proceso". "Jefe" es distinto: avisa de cualquier paso, de
-        cualquier apartado, que quede "Pendiente jefe".
+        Tipo de contrato, Podcast, Guías, OVA, Video de contenido y Libro avisan a su encargado
+        cuando el paso con fecha límite de su categoría se vence sin quedar Terminado (Tipo de
+        contrato avisa además si el contrato de un docente está por vencer). Cuestionario final no
+        tiene ningún paso con fecha límite, así que por ahora no dispara avisos. "Jefe" es
+        distinto: avisa de cualquier paso, de cualquier apartado, que quede "Pendiente jefe". Un
+        administrador puede además asignar un encargado propio para una asignatura puntual, desde
+        el panel de cada paso — pisa al de acá solo para esa asignatura.
       </p>
 
       {error && <Alerta>{error}</Alerta>}
@@ -199,7 +203,13 @@ function ModalUsuario({
 
     try {
       if (esEdicion) {
-        const cuerpo: any = {
+        const cuerpo: {
+          fullName: string;
+          initials: string;
+          role: string;
+          active: boolean;
+          password?: string;
+        } = {
           fullName: form.fullName,
           initials: form.initials,
           role: form.role,
@@ -212,8 +222,8 @@ function ModalUsuario({
         setForm({ fullName: '', email: '', initials: '', role: 'usuario', password: '', active: true });
       }
       onGuardado();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ocurrió un error');
     } finally {
       setEnviando(false);
     }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { getSocket } from '../lib/socket';
 import { pasosVisibles, excluirInstanciasExtraSinUsar } from '@shared/pipelineTemplate';
@@ -16,12 +16,31 @@ export function useMatriz(subjectId: string | undefined) {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Número de petición en vuelo: si cambia la asignatura (o se recarga dos
+  // veces seguidas), se descarta la respuesta de la petición anterior para
+  // que no pise los datos de la asignatura nueva.
+  const requestId = useRef(0);
+
   const recargar = useCallback(() => {
     if (!subjectId) return;
+    const id = ++requestId.current;
     api.get<RespuestaMatriz>(`/subjects/${subjectId}/matrix`)
-      .then((d) => { setDatos(d); setError(null); })
-      .catch((e) => setError(e.message))
-      .finally(() => setCargando(false));
+      .then((d) => { if (requestId.current === id) { setDatos(d); setError(null); } })
+      .catch((e) => { if (requestId.current === id) setError(e.message); })
+      .finally(() => { if (requestId.current === id) setCargando(false); });
+  }, [subjectId]);
+
+  // Al cambiar de asignatura se descarta lo que quede de la anterior de
+  // inmediato (no solo cuando llegue la respuesta nueva), para que no se vea
+  // un instante de una asignatura que ya no se está mirando. El estado se toca
+  // un microinstante después (no de forma síncrona desde el efecto), para no
+  // encadenar renders en el mismo commit.
+  useEffect(() => {
+    queueMicrotask(() => {
+      setDatos(null);
+      setError(null);
+      setCargando(true);
+    });
   }, [subjectId]);
 
   useEffect(() => { recargar(); }, [recargar]);

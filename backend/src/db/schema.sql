@@ -197,6 +197,11 @@ CREATE TABLE subjects (
   book_due_date             DATE,
   book_due_warning_sent_at  TIMESTAMPTZ,
 
+  -- Cuando se avisó (por última vez) que esta asignatura quedó 100%
+  -- completa. NULL = todavía no se avisó (o se reabrió algún paso desde el
+  -- último aviso, lo que rehabilita el próximo). Ver completionEmail.ts.
+  completion_email_sent_at TIMESTAMPTZ,
+
   archived   BOOLEAN     NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -312,6 +317,10 @@ CREATE TABLE matrix_cells (
   -- solo (sumando días hábiles) -- ver shared/businessDays.ts.
   reference_date DATE,
 
+  -- Optimistic locking: cada guardado incrementa version y el backend rechaza
+  -- los saves cuya version enviada no coincida con la actual (ver matrix.ts).
+  version    INTEGER NOT NULL DEFAULT 1,
+
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
 
@@ -383,6 +392,31 @@ INSERT INTO category_owners (category) VALUES
 ON CONFLICT (category) DO NOTHING;
 
 
+-- ----------------------------------------------------------------------------
+--  subject_category_owners
+--  El encargado de una categoria puede variar de una asignatura a otra (una
+--  persona distinta a cargo de "Libro" en un programa que en otro). Una fila
+--  aca para (asignatura, categoria) pisa al encargado global de esa categoria
+--  solo para esa asignatura; si no hay fila, se usa el de category_owners.
+--  "jefe" no aplica aca -- no esta atado a un apartado puntual.
+-- ----------------------------------------------------------------------------
+CREATE TABLE subject_category_owners (
+  id         SERIAL  PRIMARY KEY,
+  subject_id INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+  category   TEXT    NOT NULL,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  CONSTRAINT uq_subject_category UNIQUE (subject_id, category)
+);
+
+COMMENT ON TABLE subject_category_owners IS 'Encargado de una categoria, propio de una asignatura -- pisa al encargado global de category_owners solo para esa asignatura';
+
+CREATE TRIGGER trg_subject_category_owners_touch BEFORE UPDATE ON subject_category_owners
+  FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+
 -- ============================================================================
 --  4. INDICES
 -- ============================================================================
@@ -393,6 +427,7 @@ CREATE INDEX idx_programs_activos  ON programs(archived, name);
 CREATE INDEX idx_subjects_program  ON subjects(program_id) WHERE NOT archived;
 CREATE INDEX idx_subjects_semestre ON subjects(program_id, semester);
 CREATE INDEX idx_subject_teachers_subject ON subject_teachers(subject_id);
+CREATE INDEX idx_subject_category_owners_subject ON subject_category_owners(subject_id);
 
 -- El indice mas usado: traer toda la matriz de una asignatura
 CREATE INDEX idx_cells_subject ON matrix_cells(subject_id);

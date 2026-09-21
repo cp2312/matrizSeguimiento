@@ -2,41 +2,34 @@ import { Router } from 'express';
 import type { Server as SocketIOServer } from 'socket.io';
 import { query, queryOne } from '../db/pool.js';
 import { enviarAvisoPendiente } from '../lib/mailer.js';
+import { obtenerEncargado } from '../lib/encargados.js';
+import { revisarSiSeCompleto } from '../lib/completionEmail.js';
 import {
   buildStepPaths, isValidStepPath, findStepDef, totalSteps, pasosVisibles, parseStepPath, etiquetaPaso,
-  excluirInstanciasExtraSinUsar,
+  excluirInstanciasExtraSinUsar, pasoQueFalta,
 } from '../../../shared/pipelineTemplate.js';
 import { sumarDiasHabiles } from '../../../shared/businessDays.js';
 import type { MatrixCell, Subject, SubjectTeacher } from '../../../shared/types.js';
 
-// Los 4 apartados del proceso con encargado propio (aparte de "jefe", que no es un apartado)
-const CATEGORIAS_POR_BLOQUE = new Set(['contrato', 'podcast', 'cuestionario_final', 'guias']);
-
 /**
  * "Pendiente jefe" avisa siempre a la jefe (categoría especial "jefe"), sin
  * importar en qué apartado haya pasado -- ese estado ya significa "necesita
- * a la jefe" en cualquier parte de la asignatura. "Pendiente equipo" solo
- * avisa cuando el paso es de uno de los 4 apartados con encargado propio.
- * En ambos casos, solo si el estado ACABA de pasar a pendiente (no si ya
- * lo estaba). Nunca lanza: un correo que falla no debe tumbar el guardado.
+ * a la jefe" en cualquier parte de la asignatura. Un paso que solo queda "En
+ * proceso" (pendiente_equipo) NO avisa por correo -- esos avisos son por
+ * fecha límite (ver dueDateWarnings.ts) o fecha de contrato/entrega (ver
+ * contractWarnings.ts / bookWarnings.ts), no por el simple cambio de estado.
+ * Solo avisa si el estado ACABA de pasar a "Pendiente jefe" (no si ya lo
+ * estaba). Nunca lanza: un correo que falla no debe tumbar el guardado.
  */
 async function avisarSiQuedaPendiente(
-  blockKey: string, blockLabel: string, estadoAnterior: string | undefined,
+  blockLabel: string, estadoAnterior: string | undefined,
   celda: MatrixCell, asignaturaNombre: string, pasoLabel: string
 ): Promise<void> {
-  if (celda.status !== 'pendiente_equipo' && celda.status !== 'pendiente_jefe') return;
+  if (celda.status !== 'pendiente_jefe') return;
   if (celda.status === estadoAnterior) return;
 
-  const categoriaEncargado = celda.status === 'pendiente_jefe' ? 'jefe' : blockKey;
-  if (celda.status === 'pendiente_equipo' && !CATEGORIAS_POR_BLOQUE.has(blockKey)) return;
-
   try {
-    const encargado = await queryOne<{ full_name: string; email: string }>(
-      `SELECT u.full_name, u.email FROM category_owners co
-       JOIN users u ON u.id = co.user_id
-       WHERE co.category = $1 AND u.active`,
-      [categoriaEncargado]
-    );
+    const encargado = await obtenerEncargado('jefe', celda.subject_id);
     if (!encargado) return;
 
     // El "apartado" que abre el link es el step_path sin el último tramo:
@@ -148,6 +141,29 @@ router.patch('/subjects/:subjectId/matrix/*stepPath', async (req, res) => {
       return res.status(400).json({ error: `"${def.step.label}" no es un paso de decisión` });
     }
 
+    // No se puede avanzar un paso (sacarlo de "vacío") si el paso anterior de su
+    // mismo apartado todavía no está terminado -- pero sí se puede vaciarlo de
+    // vuelta en cualquier momento, para poder deshacer.
+    if (status && status !== 'vacio') {
+      const celdasAsignatura = await query<MatrixCell>(
+        'SELECT * FROM matrix_cells WHERE subject_id = $1', [subjectId]
+      );
+      const celdasMap: Record<string, MatrixCell> = {};
+      for (const c of celdasAsignatura) celdasMap[c.step_path] = c;
+
+      const { blockKey, instance } = parseStepPath(stepPath);
+      const pasosDelApartado = pasosVisibles(
+        excluirInstanciasExtraSinUsar(buildStepPaths(asignatura.credits), celdasMap), celdasMap
+      ).filter((p) => p.blockKey === blockKey && p.instance === instance);
+
+      const faltante = pasoQueFalta(pasosDelApartado, stepPath, celdasMap);
+      if (faltante) {
+        return res.status(400).json({
+          error: `Completa primero "${etiquetaPaso(faltante.step, faltante.instance)}"`,
+        });
+      }
+    }
+
     // Las iniciales salen del usuario, no del cliente
     const usuario = (req as any).user ?? { id: null, initials: null };
 
@@ -215,8 +231,9 @@ router.patch('/subjects/:subjectId/matrix/*stepPath', async (req, res) => {
       // Aviso por correo: no se espera a que termine para responder al cliente
       const { instance } = parseStepPath(stepPath);
       void avisarSiQuedaPendiente(
-        def.block.key, def.block.label, celdaPrevia?.status, celda, asignatura.name, etiquetaPaso(def.step, instance)
+        def.block.label, celdaPrevia?.status, celda, asignatura.name, etiquetaPaso(def.step, instance)
       );
+      void revisarSiSeCompleto(celda.subject_id);
 
       res.json(celda);
     } catch (err: any) {

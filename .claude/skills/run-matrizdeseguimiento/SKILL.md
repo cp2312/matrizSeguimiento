@@ -163,10 +163,7 @@ No test suite exists yet (`grep '"test"' */package.json` — nothing).
 cd frontend && npm run lint
 ```
 
-Currently reports 7 pre-existing errors (`@typescript-eslint/no-explicit-any`
-in a few catch blocks, one `react-hooks/set-state-in-effect` in
-`useFetch.ts`) — not something this skill introduced, just the state of
-the tree at the time this skill was written.
+Runs clean (0 errors).
 
 ## Gotchas
 

@@ -1,5 +1,6 @@
-import { query, queryOne } from '../db/pool.js';
+import { query } from '../db/pool.js';
 import { enviarAvisoFechaLimite } from './mailer.js';
+import { obtenerEncargado } from './encargados.js';
 import { findStepDef, etiquetaPaso, parseStepPath } from '../../../shared/pipelineTemplate.js';
 
 /** Con cuántos días de anticipación a la fecha límite se dispara el aviso */
@@ -60,27 +61,16 @@ export async function revisarFechasLimite(): Promise<void> {
 
     if (!candidatas.length) return;
 
-    // Un solo select trae los encargados de las 4 categorías -- se cachean
-    // por categoria para no repetir la consulta por cada celda.
-    const encargados = new Map<string, { full_name: string; email: string }>();
-
     for (const c of candidatas) {
       const { blockKey } = parseStepPath(c.step_path);
       const categoria = CATEGORIA_POR_BLOQUE[blockKey];
       if (!categoria) continue; // step_path con hasDueDate fuera de estos 4 bloques: no debería pasar, pero por si acaso
 
-      if (!encargados.has(categoria)) {
-        const fila = await queryOne<{ full_name: string; email: string }>(
-          `SELECT u.full_name, u.email FROM category_owners co
-           JOIN users u ON u.id = co.user_id
-           WHERE co.category = $1`,
-          [categoria]
-        );
-        if (fila) encargados.set(categoria, fila);
-      }
-      const encargado = encargados.get(categoria);
+      // El encargado propio de ESTA asignatura para la categoría gana sobre
+      // el global -- distinto según la asignatura, no una sola vez para todas.
+      const encargado = await obtenerEncargado(categoria, c.subject_id);
       if (!encargado) {
-        console.warn(`[fechas-limite] Nadie asignado como encargado de "${categoria}" -- se omite el aviso`);
+        console.warn(`[fechas-limite] Nadie asignado como encargado de "${categoria}" en la asignatura ${c.subject_id} -- se omite el aviso`);
         continue;
       }
 

@@ -1,11 +1,15 @@
-import { useState } from 'react';
-import { api } from '../lib/api';
+import { useEffect, useRef, useState } from 'react';
+import { api, ApiError } from '../lib/api';
+import { useFetch } from '../hooks/useFetch';
+import { useAuth } from '../context/useAuth';
 import { BotonConfirmar } from './ui/BotonConfirmar';
 import { Alerta } from './ui/Alerta';
 import { ESTADOS, ORDEN_ESTADOS } from '../lib/estados';
 import { etiquetaPaso } from '../lib/bloques';
 import { sumarDiasHabiles } from '@shared/businessDays';
-import type { CellStatus, MatrixCell, ResolvedStep, SubjectTeacher } from '@shared/types';
+import { parseStepPath } from '@shared/pipelineTemplate';
+import { CATEGORIAS_ENCARGADO, CATEGORIAS_SIN_FECHA_EN_PASO } from '@shared/types';
+import type { CategoriaEncargado, CellStatus, MatrixCell, ResolvedStep, SubjectCategoryOwner, SubjectTeacher } from '@shared/types';
 
 /** 'YYYY-MM-DD' -> 'DD/MM/AAAA', sin pasar por Date (evita corrimientos de zona horaria) */
 function fechaLegible(iso: string): string {
@@ -25,11 +29,46 @@ interface Props {
   onBookDueDateChanged: (bookDueDate: string | null) => void;
   onCerrar: () => void;
   onRecargar?: () => void;
+  /** avisa hacia afuera si el formulario tiene cambios sin guardar (para
+   *  preguntar antes de cerrar el modal y perderlos) */
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
-const HOY = new Date().toISOString().slice(0, 10);
+/** Fecha de hoy local ('YYYY-MM-DD'). No usar toISOString: en zonas al oeste
+ *  de UTC, al anochecer ya devuelve la fecha del día siguiente. */
+function hoyLocal(): string {
+  const hoy = new Date();
+  const mes = String(hoy.getMonth() + 1).padStart(2, '0');
+  const dia = String(hoy.getDate()).padStart(2, '0');
+  return `${hoy.getFullYear()}-${mes}-${dia}`;
+}
 
 type EdicionContrato = { start_date: string; end_date: string; contract_type: string };
+
+type FormCelda = {
+  status: CellStatus;
+  doneDate: string;
+  comment: string;
+  secondComment: string;
+  branchValue: boolean | null;
+  dueDate: string;
+  referenceDate: string;
+};
+
+/** El formulario arranca con los valores ya guardados de la celda (o los
+ *  vacíos). Vivir en una función aparte permite comparar contra la foto
+ *  inicial para saber si hay cambios sin guardar. */
+function formInicialDe(celda: MatrixCell | undefined): FormCelda {
+  return {
+    status: (celda?.status ?? 'vacio') as CellStatus,
+    doneDate: celda?.done_date ?? hoyLocal(),
+    comment: celda?.comment ?? '',
+    secondComment: celda?.second_comment ?? '',
+    branchValue: celda?.branch_value ?? null,
+    dueDate: celda?.due_date ?? '',
+    referenceDate: celda?.reference_date ?? '',
+  };
+}
 
 function aEdicion(t: SubjectTeacher): EdicionContrato {
   return { start_date: t.start_date ?? '', end_date: t.end_date ?? '', contract_type: t.contract_type ?? '' };
@@ -70,7 +109,8 @@ function DocentesContrato({ subjectId, teachers, onCambiados, onCeldaActualizada
 
   function deshacer(t: SubjectTeacher) {
     setEdiciones((prev) => {
-      const { [t.id]: _quitado, ...resto } = prev;
+      const resto = { ...prev };
+      delete resto[t.id];
       return resto;
     });
   }
@@ -106,7 +146,7 @@ function DocentesContrato({ subjectId, teachers, onCambiados, onCeldaActualizada
   }
 
   return (
-    <div className="space-y-2 mb-3">
+    <div className="grid sm:grid-cols-2 gap-2 mb-3">
       {teachers.map((t) => (
         <div key={t.id} className="bg-slate-50 dark:bg-slate-800/60 rounded-md px-2.5 py-2 space-y-1.5">
           <p className="text-[12px] font-medium text-slate-800 dark:text-slate-100">{t.full_name}</p>
@@ -223,39 +263,111 @@ function FechaEntregaLibro({ subjectId, bookDueDate, onCambiada }: {
   );
 }
 
+/** Los usuarios activos, para el desplegable de encargado -- solo hace falta
+ *  pedirlos si de verdad se va a mostrar el selector (admin). */
+function useUsuariosActivos(habilitado: boolean) {
+  const { datos } = useFetch<{ id: number; full_name: string; active: boolean }[]>(
+    habilitado ? '/auth/usuarios' : null
+  );
+  return datos?.filter((u) => u.active) ?? [];
+}
+
+/** Quién es el encargado de esta categoría para ESTA asignatura puntual --
+ *  puede ser distinto del encargado global (ver Usuarios > Encargados por
+ *  categoría). Solo un administrador puede cambiarlo; cualquiera lo ve. */
+function EncargadoAsignatura({ subjectId, category, label }: {
+  subjectId: number;
+  category: CategoriaEncargado;
+  label: string;
+}) {
+  const { usuario } = useAuth();
+  const esAdmin = usuario?.role === 'administrador';
+  const { datos: encargados, recargar } = useFetch<SubjectCategoryOwner[]>(`/subjects/${subjectId}/encargados`);
+  const usuarios = useUsuariosActivos(esAdmin);
+  const [guardando, setGuardando] = useState(false);
+
+  const fila = encargados?.find((e) => e.category === category);
+  if (!fila) return null;
+
+  async function cambiar(valor: string) {
+    setGuardando(true);
+    try {
+      await api.put(`/subjects/${subjectId}/encargados/${category}`, { userId: valor ? Number(valor) : null });
+      recargar();
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  return (
+    <div className="bg-slate-50 dark:bg-slate-800/60 rounded-md px-2.5 py-2 mb-3">
+      <p className="text-[10px] text-slate-400 dark:text-slate-500 mb-1">
+        Encargado de {label} para esta asignatura
+      </p>
+      {esAdmin ? (
+        <select
+          value={fila.userId ? String(fila.userId) : ''}
+          disabled={guardando}
+          onChange={(e) => cambiar(e.target.value)}
+          className="w-full h-7 px-1.5 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 dark:text-slate-100 text-[11px] outline-none focus:ring-2 focus:ring-slate-400"
+        >
+          <option value="">
+            {fila.globalUserFullName ? `Usar el general (${fila.globalUserFullName})` : 'Usar el general (sin asignar)'}
+          </option>
+          {usuarios.map((u) => (
+            <option key={u.id} value={u.id}>{u.full_name}</option>
+          ))}
+        </select>
+      ) : (
+        <p className="text-[12px] text-slate-700 dark:text-slate-200">
+          {fila.userFullName ?? fila.globalUserFullName ?? 'Sin asignar'}
+          {!fila.esPropio && fila.globalUserFullName && ' (general)'}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function PanelCelda({
   subjectId, paso, celda, teachers, bookDueDate,
-  onGuardado, onTeachersChanged, onBookDueDateChanged, onCerrar, onRecargar,
+  onGuardado, onTeachersChanged, onBookDueDateChanged, onCerrar, onRecargar, onDirtyChange,
 }: Props) {
   const { step, path } = paso;
   const esTipoContrato = path === 'contrato.tipo_contrato';
 
-  // Se reinicia el formulario cuando cambia el paso seleccionado
-  const [pathCargado, setPathCargado] = useState(path);
-  const [form, setForm] = useState({
-    status: (celda?.status ?? 'vacio') as CellStatus,
-    doneDate: celda?.done_date ?? HOY,
-    comment: celda?.comment ?? '',
-    secondComment: celda?.second_comment ?? '',
-    branchValue: celda?.branch_value ?? null as boolean | null,
-    dueDate: celda?.due_date ?? '',
-    referenceDate: celda?.reference_date ?? '',
-  });
-  const [error, setError] = useState('');
+  // El selector de encargado propio de esta asignatura solo tiene sentido
+  // mostrarlo donde de verdad se manda un correo por esa categoría: en el
+  // paso puntual con fecha límite (ovas/podcast/video_contenido/guias/libro),
+  // o en "Tipo de contrato" (avisa por la fecha de fin de contrato, no por
+  // una fecha límite propia -- ver CATEGORIAS_SIN_FECHA_EN_PASO). El resto de
+  // los pasos (p. ej. "ISBN"/"Corrección de estilo" en Libro, o cualquier
+  // paso de "Cuestionario final", que no tiene ninguno con fecha límite)
+  // nunca disparan un aviso por esa categoría, así que ahí no se muestra.
+  const { blockKey } = parseStepPath(path);
+  const tieneCategoria = blockKey in CATEGORIAS_ENCARGADO && blockKey !== 'jefe';
+  const avisaPorEstePaso = tieneCategoria
+    && (!!step.hasDueDate || !!step.autoDueDate || CATEGORIAS_SIN_FECHA_EN_PASO.includes(blockKey as CategoriaEncargado));
+  const categoriaEncargado = avisaPorEstePaso ? (blockKey as CategoriaEncargado) : null;
 
-  if (pathCargado !== path) {
-    setPathCargado(path);
-    setForm({
-      status: (celda?.status ?? 'vacio') as CellStatus,
-      doneDate: celda?.done_date ?? HOY,
-      comment: celda?.comment ?? '',
-      secondComment: celda?.second_comment ?? '',
-      branchValue: celda?.branch_value ?? null,
-      dueDate: celda?.due_date ?? '',
-      referenceDate: celda?.reference_date ?? '',
-    });
-    setError('');
-  }
+  // El formulario se remonta entero (key={path} en ModalApartado) cuando cambia
+  // el paso, así que el estado arranca fresco en cada paso sin reset manual.
+  const [form, setForm] = useState<FormCelda>(() => formInicialDe(celda));
+  const [error, setError] = useState('');
+  // Foto de los valores con los que arrancó el formulario -- si el usuario
+  // no toca nada, no hay nada que perder al cerrar.
+  const inicialRef = useRef<FormCelda>(form);
+  const [dirty, setDirty] = useState(false);
+
+  useEffect(() => {
+    const i = inicialRef.current;
+    const esDirty = form.status !== i.status || form.doneDate !== i.doneDate
+      || form.comment !== i.comment || form.secondComment !== i.secondComment
+      || form.branchValue !== i.branchValue || form.dueDate !== i.dueDate
+      || form.referenceDate !== i.referenceDate;
+    setDirty(esDirty);
+  }, [form]);
+
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
 
   /** Corre antes de pedir confirmación -- si algo falta, se avisa de una vez
    *  en vez de hacer confirmar algo que de todas formas va a fallar. */
@@ -298,12 +410,12 @@ export function PanelCelda({
       );
       onGuardado(celdaGuardada);
       onCerrar();
-    } catch (err: any) {
+    } catch (err) {
       // El error se muestra en el modal de confirmación (ver BotonConfirmar),
       // no acá -- por eso se relanza en vez de guardarlo en el estado local.
-      if (err.status === 409) {
+      if (err instanceof ApiError && err.status === 409) {
         if (onRecargar) onRecargar();
-        throw new Error('Otro usuario modificó esta celda. Recargando...');
+        throw new Error('Otro usuario modificó esta celda. Recargando...', { cause: err });
       }
       throw err;
     }
@@ -324,6 +436,14 @@ export function PanelCelda({
           ×
         </button>
       </div>
+
+      {categoriaEncargado && (
+        <EncargadoAsignatura
+          subjectId={subjectId}
+          category={categoriaEncargado}
+          label={CATEGORIAS_ENCARGADO[categoriaEncargado]}
+        />
+      )}
 
       {esTipoContrato && (
         <>
@@ -355,28 +475,30 @@ export function PanelCelda({
       ) : null}
 
       <div className="space-y-1 mb-3">
-        {ORDEN_ESTADOS.map((estado) => {
-          const e = ESTADOS[estado];
-          const activo = form.status === estado;
-          return (
-            <button
-              key={estado}
-              onClick={() => setForm({ ...form, status: estado })}
-              className={`flex items-center gap-2 w-full h-8 px-2 rounded-md text-[12px] text-left
-                          border transition-colors ${
-                activo
-                  ? 'border-cyan-600 bg-cyan-50 text-slate-900 dark:border-cyan-500 dark:bg-cyan-950/40 dark:text-slate-100'
-                  : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/60 text-slate-700 dark:text-slate-300'
-              }`}
-            >
-              <span
-                className="w-3.5 h-3.5 rounded-sm shrink-0"
-                style={{ background: e.fondo, border: '0.5px solid rgba(0,0,0,.15)' }}
-              />
-              {e.label}
-            </button>
-          );
-        })}
+        {(step.customStates ?? ORDEN_ESTADOS.map((estado) => ({ value: estado, label: ESTADOS[estado].label }))).map(
+          ({ value: estado, label }) => {
+            const e = ESTADOS[estado];
+            const activo = form.status === estado;
+            return (
+              <button
+                key={estado}
+                onClick={() => setForm({ ...form, status: estado })}
+                className={`flex items-center gap-2 w-full h-8 px-2 rounded-md text-[12px] text-left
+                            border transition-colors ${
+                  activo
+                    ? 'border-cyan-600 bg-cyan-50 text-slate-900 dark:border-cyan-500 dark:bg-cyan-950/40 dark:text-slate-100'
+                    : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/60 text-slate-700 dark:text-slate-300'
+                }`}
+              >
+                <span
+                  className="w-3.5 h-3.5 rounded-sm shrink-0"
+                  style={{ background: e.fondo, border: '0.5px solid rgba(0,0,0,.15)' }}
+                />
+                {label}
+              </button>
+            );
+          }
+        )}
       </div>
 
       <label className="block mb-3">
@@ -426,7 +548,7 @@ export function PanelCelda({
         </label>
       )}
 
-      {step.hasComment && (
+      {step.hasComment && (!step.commentSoloSiTerminado || form.status === 'terminado') && (
         <label className="block mb-3">
           <span className="text-[11px] text-slate-500 dark:text-slate-400">
             {step.commentLabel ?? 'Comentario'}

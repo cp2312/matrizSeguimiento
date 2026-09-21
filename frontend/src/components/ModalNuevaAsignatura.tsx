@@ -84,7 +84,7 @@ export function ModalNuevaAsignatura({ abierto, programa, asignatura, onCerrar, 
   // virtual) en cambio pide el nombre del programa. Son mutuamente excluyentes.
   const pideModalidad = programa.type === 'hibrido';
   const pideNombrePrograma = programa.type === 'presencial';
-  const set = (campo: keyof typeof VACIO) => (e: React.ChangeEvent<any>) => {
+  const set = (campo: keyof typeof VACIO) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     setForm({ ...form, [campo]: e.target.value });
     setConfirmando(false);
   };
@@ -125,8 +125,8 @@ export function ModalNuevaAsignatura({ abierto, programa, asignatura, onCerrar, 
 
       setConfirmando(false);
       onGuardada();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ocurrió un error');
     } finally {
       setEnviando(false);
     }

@@ -66,8 +66,8 @@ export function BotonConfirmar({
           try {
             await onConfirmar();
             setConfirmando(false);
-          } catch (err: any) {
-            setError(err.message ?? 'Ocurrió un error, intenta de nuevo');
+          } catch (err) {
+            setError(err instanceof Error ? err.message : 'Ocurrió un error, intenta de nuevo');
           } finally {
             setEnviando(false);
           }

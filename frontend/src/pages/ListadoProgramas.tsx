@@ -71,6 +71,16 @@ function TipoSwatch({ tipo, variante = 'lista' }: { tipo: ProgramType; variante?
   );
 }
 
+function IconoPendientes() {
+  return (
+    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 11l3 3L22 4" />
+      <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+    </svg>
+  );
+}
+
 function IconoLapiz() {
   return (
     <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -176,8 +186,8 @@ export default function ListadoProgramas() {
       enlace.click();
       enlace.remove();
       URL.revokeObjectURL(url);
-    } catch (err: any) {
-      setErrorExportar(err.message);
+    } catch (err) {
+      setErrorExportar(err instanceof Error ? err.message : 'Ocurrió un error');
     } finally {
       setExportando(false);
     }
@@ -321,9 +331,17 @@ export default function ListadoProgramas() {
                         {formatearFecha(p.created_at)}
                       </td>
                       <td className="text-right pr-4 whitespace-nowrap">
+                        <Link
+                          to={`/programas/${p.id}/pendientes`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="inline-flex items-center gap-1 text-[13px] text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors"
+                        >
+                          <IconoPendientes />
+                          Pendientes
+                        </Link>
                         <button
                           onClick={(e) => { e.stopPropagation(); setEditando(p); }}
-                          className="inline-flex items-center gap-1 text-[13px] text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors"
+                          className="inline-flex items-center gap-1 text-[13px] text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors ml-3"
                         >
                           <IconoLapiz />
                           Editar
@@ -477,8 +495,8 @@ function ModalPrograma({
       }
       setConfirmando(false);
       onGuardado();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ocurrió un error');
     } finally {
       setEnviando(false);
     }
@@ -619,8 +637,8 @@ function ModalEliminarPrograma({
     try {
       await api.del(`/programs/${programa!.id}`);
       onEliminado();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ocurrió un error');
     } finally {
       setEliminando(false);
     }

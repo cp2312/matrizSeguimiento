@@ -1,5 +1,6 @@
 import { query, queryOne } from '../db/pool.js';
 import { enviarAvisoLibroNoEntregado } from './mailer.js';
+import { obtenerEncargado } from './encargados.js';
 
 /** step_path del paso "Recepción de libro" -- no repetible, siempre esta misma ruta */
 const PASO_RECEPCION_LIBRO = 'libro.recepcion_libro';
@@ -45,19 +46,6 @@ export async function revisarLibroNoEntregado(): Promise<void> {
 
     if (!candidatas.length) return;
 
-    // Si nadie está asignado como encargado de "Libro", no hay a quién
-    // avisar -- se omite todo el lote (se reintenta en la próxima revisión,
-    // ya que book_due_warning_sent_at no se toca).
-    const encargado = await queryOne<{ full_name: string; email: string }>(
-      `SELECT u.full_name, u.email FROM category_owners co
-       JOIN users u ON u.id = co.user_id
-       WHERE co.category = 'libro'`
-    );
-    if (!encargado) {
-      console.warn('[libro] Nadie asignado como encargado de "Libro" -- se omiten los avisos');
-      return;
-    }
-
     for (const c of candidatas) {
       const celda = await queryOne<{ status: string }>(
         `SELECT status FROM matrix_cells WHERE subject_id = $1 AND step_path = $2`,
@@ -68,6 +56,14 @@ export async function revisarLibroNoEntregado(): Promise<void> {
       // avisada -- si esto se revisa antes de guardar la celda, en la
       // siguiente corrida se vuelve a chequear en vez de quedar silenciada.
       if (celda?.status === 'terminado') continue;
+
+      // El encargado propio de ESTA asignatura para "Libro" gana sobre el
+      // global -- puede ser distinto de una asignatura a otra.
+      const encargado = await obtenerEncargado('libro', c.subject_id);
+      if (!encargado) {
+        console.warn(`[libro] Nadie asignado como encargado de "Libro" en la asignatura ${c.subject_id} -- se omite el aviso`);
+        continue;
+      }
 
       const docentes = await query<{ full_name: string }>(
         `SELECT full_name FROM subject_teachers WHERE subject_id = $1 ORDER BY id`,

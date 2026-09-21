@@ -1,6 +1,7 @@
 import { Fragment } from 'react';
 import { CeldaProceso } from './CeldaProceso';
 import { pasosVisibles, etiquetaPaso } from '../lib/bloques';
+import { pasoQueFalta } from '@shared/pipelineTemplate';
 import type { MatrixCell, ResolvedStep } from '@shared/types';
 
 interface Props {
@@ -48,6 +49,7 @@ export function BloqueProceso({
               celda={celdas[p.path]}
               seleccionada={seleccionado === p.path}
               onClick={() => onSeleccionar(p.path)}
+              bloqueadoPor={pasoQueFalta(visibles, p.path, celdas)}
             />
             {puedeAgregarMas && (
               <button
@@ -57,7 +59,7 @@ export function BloqueProceso({
                            text-slate-400 dark:text-slate-500 text-[11px] leading-tight text-center grid place-items-center
                            hover:border-slate-400 hover:text-slate-600 dark:hover:text-slate-300 dark:hover:bg-white/5 hover:bg-slate-50 transition-colors"
               >
-                + Agregar otro reporte
+                + Otro intento: {p.step.repeatable!.itemLabel}
               </button>
             )}
           </Fragment>

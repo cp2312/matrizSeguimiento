@@ -69,7 +69,7 @@ async function ensurePage() {
 }
 
 function resolveUrl(u) {
-  return /^https?:\/\//.test(u) ? u : BASE_URL + (u.startsWith('/') ? u : '/' + u);
+  return /^(https?|file):\/\//.test(u) ? u : BASE_URL + (u.startsWith('/') ? u : '/' + u);
 }
 
 const COMMANDS = {

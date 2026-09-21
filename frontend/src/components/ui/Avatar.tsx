@@ -3,6 +3,7 @@ interface Props {
   iniciales: string;
   avatarUrl?: string | null;
   tamano?: 'sm' | 'md' | 'lg' | 'xl';
+  className?: string;
 }
 
 const TAMANOS = {
@@ -22,20 +23,20 @@ const FUENTE_INICIALES = {
 /**
  * Foto de perfil si el usuario subió una; si no, un círculo con sus iniciales.
  */
-export function Avatar({ nombre, iniciales, avatarUrl, tamano = 'md' }: Props) {
+export function Avatar({ nombre, iniciales, avatarUrl, tamano = 'md', className = '' }: Props) {
   if (avatarUrl) {
     return (
       <img
         src={avatarUrl}
         alt={nombre}
-        className={`${TAMANOS[tamano]} rounded-full object-cover bg-slate-100 dark:bg-slate-800 ring-1 ring-slate-200/60 dark:ring-white/10 shrink-0`}
+        className={`${TAMANOS[tamano]} rounded-full object-cover bg-slate-100 dark:bg-slate-800 ring-1 ring-slate-200/60 dark:ring-white/10 shrink-0 ${className}`}
       />
     );
   }
 
   return (
     <div
-      className={`${TAMANOS[tamano]} rounded-full bg-marca-500 dark:bg-marca-600 grid place-items-center ring-1 ring-white/20 shrink-0`}
+      className={`${TAMANOS[tamano]} rounded-full bg-marca-500 dark:bg-marca-600 grid place-items-center ring-1 ring-white/20 shrink-0 ${className}`}
     >
       <span className={`text-white font-semibold tracking-wide ${FUENTE_INICIALES[tamano]}`}>
         {iniciales}

@@ -6,7 +6,9 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/backend/src/index.js",
-    "crear-admin": "tsx src/db/crearAdmin.ts"
+    "crear-admin": "tsx src/db/crearAdmin.ts",
+    "generar-confetti": "node scripts/generar-confetti-gif.mjs",
+    "previsualizar-correo": "tsx scripts/previsualizar-correo.ts"
   },
   "keywords": [],
   "author": "",
@@ -31,6 +33,7 @@
     "@types/node": "^26.2.0",
     "@types/nodemailer": "^8.0.1",
     "@types/pg": "^8.23.1",
+    "gifenc": "^1.0.3",
     "tsx": "^4.23.12",
     "typescript": "^7.0.2"
   }

@@ -1,8 +1,8 @@
 import { Link, useLocation } from 'react-router-dom';
 import { Encabezado } from './ui/Encabezado';
 import { Avatar } from './ui/Avatar';
-import { useAuth } from '../context/AuthContext';
-import { useTema } from '../context/TemaContext';
+import { useAuth } from '../context/useAuth';
+import { useTema } from '../context/useTema';
 
 interface Props {
   children: React.ReactNode;
@@ -24,7 +24,7 @@ export function Layout({ children, ancho = 'normal' }: Props) {
               to="/configuracion"
               title="Configuración de perfil"
               className="hidden md:flex items-center justify-end gap-2 mr-1 leading-tight rounded-full
-                         px-2 py-1 -mx-2 transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+                         px-2 py-1 -mx-2 transition-colors hover:bg-black/5 dark:hover:bg-white/10 group"
             >
               <div className="text-right">
                 <p className="text-[13px] font-medium text-slate-700 dark:text-slate-200">{usuario?.full_name}</p>
@@ -32,15 +32,20 @@ export function Layout({ children, ancho = 'normal' }: Props) {
                   {usuario?.role === 'administrador' ? 'Administrador' : 'Usuario'}
                 </p>
               </div>
-              <Avatar nombre={usuario?.full_name ?? ''} iniciales={usuario?.initials ?? ''} avatarUrl={usuario?.avatar_url} />
+              <Avatar
+                nombre={usuario?.full_name ?? ''}
+                iniciales={usuario?.initials ?? ''}
+                avatarUrl={usuario?.avatar_url}
+                className="transition-transform group-hover:scale-110"
+              />
             </Link>
 
             <Link
               to="/configuracion"
               title="Configuración de perfil"
               className="md:hidden w-9 h-9 grid place-items-center rounded-full text-slate-500 dark:text-slate-300
-                         hover:text-slate-800 dark:hover:text-white hover:bg-slate-200/70
-                         dark:hover:bg-white/10 transition-colors"
+                         hover:text-slate-800 dark:hover:text-white hover:bg-slate-200/70 dark:hover:bg-white/10
+                         hover:scale-110 active:scale-95 transition-all duration-150"
             >
               <Avatar tamano="sm" nombre={usuario?.full_name ?? ''} iniciales={usuario?.initials ?? ''} avatarUrl={usuario?.avatar_url} />
             </Link>
@@ -99,8 +104,8 @@ function Accion({ onClick, titulo, children }: { onClick: () => void; titulo: st
       onClick={onClick}
       title={titulo}
       className="w-9 h-9 grid place-items-center rounded-full text-slate-500 dark:text-slate-300
-                 hover:text-slate-800 dark:hover:text-white hover:bg-slate-200/70
-                 dark:hover:bg-white/10 transition-colors"
+                 hover:text-slate-800 dark:hover:text-white hover:bg-slate-200/70 dark:hover:bg-white/10
+                 hover:scale-110 active:scale-95 transition-all duration-150"
     >
       {children}
     </button>
@@ -112,10 +117,10 @@ function EnlaceNav({ a, activo, children }: { a: string; activo: boolean; childr
     <Link
       to={a}
       className={`px-3.5 h-8 inline-flex items-center rounded-full text-[13px] font-medium
-                  transition-colors ${
+                  transition-all duration-150 ${
         activo
-          ? 'bg-slate-900 text-white shadow-sm dark:bg-white dark:text-slate-900'
-          : 'text-slate-600 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10'
+          ? 'bg-slate-900 text-white shadow-md shadow-slate-900/20 dark:bg-white dark:text-slate-900 dark:shadow-black/30'
+          : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10 hover:scale-[1.04] active:scale-[0.97]'
       }`}
     >
       {children}

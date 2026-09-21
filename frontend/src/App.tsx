@@ -1,11 +1,13 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { AuthProvider, useAuth } from './context/AuthContext';
+import { AuthProvider } from './context/AuthContext';
+import { useAuth } from './context/useAuth';
 import Login from './pages/Login';
 import OlvidoPassword from './pages/OlvidoPassword';
 import RestablecerPassword from './pages/RestablecerPassword';
 import Usuarios from './pages/Usuarios';
 import ListadoProgramas from './pages/ListadoProgramas';
 import Programa from './pages/Programas';
+import Pendientes from './pages/Pendientes';
 import Asignatura from './pages/Asignatura';
 import Configuracion from './pages/Configuracion';
 import Actividad from './pages/Actividad';
@@ -46,6 +48,11 @@ export default function App() {
           <Route
             path="/programas/:id"
             element={<Protegida><Programa /></Protegida>}
+          />
+
+          <Route
+            path="/programas/:id/pendientes"
+            element={<Protegida><Pendientes /></Protegida>}
           />
 
           <Route

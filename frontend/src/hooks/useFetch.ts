@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { api } from '../lib/api';
 
 export function useFetch<T>(path: string | null) {
@@ -6,14 +6,24 @@ export function useFetch<T>(path: string | null) {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const recargar = useCallback(() => {
-    if (!path) return setCargando(false);
+  // Número de petición en vuelo: si cambia el path (o se llama recargar dos
+  // veces seguidas), una respuesta vieja que llegue después se descarta y no
+  // pisa los datos de la consulta nueva.
+  const requestId = useRef(0);
 
-    setCargando(true);
-    api.get<T>(path)
-      .then((d) => { setDatos(d); setError(null); })
-      .catch((e) => setError(e.message))
-      .finally(() => setCargando(false));
+  // El estado se toca un microinstante después de llamarse (no de forma
+  // síncrona desde el efecto), para no encadenar renders en el mismo commit.
+  const recargar = useCallback(() => {
+    queueMicrotask(() => {
+      if (!path) return setCargando(false);
+
+      const id = ++requestId.current;
+      setCargando(true);
+      api.get<T>(path)
+        .then((d) => { if (requestId.current === id) { setDatos(d); setError(null); } })
+        .catch((e) => { if (requestId.current === id) setError(e instanceof Error ? e.message : 'Ocurrió un error'); })
+        .finally(() => { if (requestId.current === id) setCargando(false); });
+    });
   }, [path]);
 
   useEffect(() => { recargar(); }, [recargar]);

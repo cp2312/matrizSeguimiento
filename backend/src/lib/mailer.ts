@@ -1,4 +1,6 @@
 import nodemailer from 'nodemailer';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 let transporter: ReturnType<typeof nodemailer.createTransport> | null | undefined;
 
@@ -33,16 +35,16 @@ interface AvisoPendiente {
   asignatura: string;
   categoria: string;
   paso: string;
-  estado: 'pendiente_equipo' | 'pendiente_jefe';
+  /** este aviso solo existe para "Pendiente jefe" -- un paso que solo queda
+   *  "En proceso" no avisa por correo (esos avisos son por fecha límite,
+   *  fecha de contrato o fecha de entrega, no por el simple cambio de estado) */
+  estado: 'pendiente_jefe';
   /** id de la asignatura y clave del apartado (p. ej. "guias.1"), para armar el link directo */
   subjectId: number;
   apartado: string;
 }
 
-const COLOR_ESTADO: Record<AvisoPendiente['estado'], { fondo: string; texto: string; label: string }> = {
-  pendiente_equipo: { fondo: '#FEE2E2', texto: '#B91C1C', label: 'En proceso' },
-  pendiente_jefe: { fondo: '#FEF3C7', texto: '#92400E', label: 'Pendiente jefe' },
-};
+const COLOR_ESTADO = { fondo: '#FEF3C7', texto: '#92400E', label: 'Pendiente jefe' };
 
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({
@@ -56,7 +58,7 @@ function construirLink(subjectId: number, apartado: string): string {
 }
 
 function construirHtml(datos: AvisoPendiente, link: string): string {
-  const color = COLOR_ESTADO[datos.estado];
+  const color = COLOR_ESTADO;
   const asignatura = escapeHtml(datos.asignatura);
   const categoria = escapeHtml(datos.categoria);
   const paso = escapeHtml(datos.paso);
@@ -113,7 +115,7 @@ export async function enviarAvisoPendiente(datos: AvisoPendiente): Promise<void>
   }
 
   const link = construirLink(datos.subjectId, datos.apartado);
-  const estadoLabel = COLOR_ESTADO[datos.estado].label;
+  const estadoLabel = COLOR_ESTADO.label;
 
   try {
     const info = await t.sendMail({
@@ -150,6 +152,36 @@ interface AvisoContratoPorVencer {
 function construirLinkAsignatura(subjectId: number): string {
   const base = process.env.CLIENT_ORIGIN ?? 'http://localhost:5173';
   return `${base}/asignaturas/${subjectId}`;
+}
+
+let confettiGif: Buffer | null | undefined;
+
+/**
+ * Lee (una sola vez) el GIF animado de confeti que se incrusta en el correo de
+ * finalización. La ruta se resuelve desde la raíz del backend, que es el cwd
+ * con el que corren `npm run dev` y PM2 (el mismo desde el que dotenv lee
+ * backend/.env). Si el archivo no está, devuelve null y el correo se envía
+ * igual, sin la animación. Nunca lanza.
+ */
+function getConfettiGif(): Buffer | null {
+  if (confettiGif !== undefined) return confettiGif;
+
+  const candidatos = [
+    join(process.cwd(), 'assets', 'confetti.gif'),
+    join(process.cwd(), 'backend', 'assets', 'confetti.gif'),
+  ];
+  for (const ruta of candidatos) {
+    try {
+      confettiGif = readFileSync(ruta);
+      return confettiGif;
+    } catch {
+      // probamos la siguiente ubicación
+    }
+  }
+
+  console.warn('[mailer] No se encontró assets/confetti.gif — el correo irá sin la animación');
+  confettiGif = null;
+  return confettiGif;
 }
 
 function fechaLegible(iso: string): string {
@@ -530,5 +562,120 @@ export async function enviarAvisoFechaLimite(datos: AvisoFechaLimite): Promise<v
     console.log(`[mailer] Aviso de fecha límite enviado a ${datos.paraEmail} (${info.messageId})`);
   } catch (err) {
     console.error(`[mailer] No se pudo enviar el aviso de fecha límite a ${datos.paraEmail}:`, err);
+  }
+}
+
+interface AvisoAsignaturaCompleta {
+  paraEmail: string;
+  paraNombre: string;
+  asignatura: string;
+  programa: string;
+  /** URL del aula virtual (paso "Link aula" de "Revisión final"); null si todavía no se llenó */
+  linkAula: string | null;
+  subjectId: number;
+}
+
+export function construirHtmlAsignaturaCompleta(datos: AvisoAsignaturaCompleta, link: string): string {
+  const asignatura = escapeHtml(datos.asignatura);
+  const programa = escapeHtml(datos.programa);
+  const nombre = escapeHtml(datos.paraNombre);
+  const linkAulaEscapado = datos.linkAula ? escapeHtml(datos.linkAula) : null;
+
+  return `
+<div style="font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; background:#F1F5F9; padding:32px 16px;">
+  <div style="max-width:480px; margin:0 auto; background:#FFFFFF; border-radius:16px; overflow:hidden; border:1px solid #E2E8F0;">
+    <div style="background:#0F172A; text-align:center;">
+      <img src="cid:confetti" alt="🎉🥳🎊" width="432"
+           style="display:block; margin:0 auto; width:100%; max-width:432px; height:auto; border:0;" />
+      <p style="margin:0; padding:0 28px 22px; color:#FFFFFF; font-size:15px; font-weight:700; letter-spacing:.02em;">
+        ¡Asignatura finalizada!
+      </p>
+    </div>
+
+    <div style="padding:28px;">
+      <p style="margin:0 0 4px; color:#64748B; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">
+        ${programa}
+      </p>
+      <h1 style="margin:0 0 18px; color:#0F172A; font-size:19px; line-height:1.3;">
+        ${asignatura}
+      </h1>
+
+      <div style="background:#F0FDF4; border:1px solid #DCFCE7; border-radius:10px; padding:14px 16px; margin-bottom:22px;">
+        <p style="margin:0; color:#166534; font-size:14px; font-weight:600;">
+          ✅ 100% completa — todos los pasos de la matriz quedaron en "Terminado"
+        </p>
+      </div>
+
+      <p style="margin:0 0 24px; color:#475569; font-size:14px; line-height:1.55;">
+        Hola ${nombre}, 🎈 el aula de <strong>${asignatura}</strong> ya está lista de punta a punta. ¡Buen trabajo al equipo! 🙌
+      </p>
+
+      ${linkAulaEscapado ? `
+      <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:10px; padding:12px 14px; margin-bottom:12px;">
+        <p style="margin:0 0 4px; color:#64748B; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.04em;">
+          Link del aula virtual
+        </p>
+        <a href="${linkAulaEscapado}" style="color:#0F172A; font-size:13px; word-break:break-all; text-decoration:underline;">
+          ${linkAulaEscapado}
+        </a>
+      </div>
+      <a href="${linkAulaEscapado}"
+         style="display:block; text-align:center; background:#3F7D5C; color:#FFFFFF; text-decoration:none;
+                font-size:14px; font-weight:700; padding:14px 22px; border-radius:10px; margin-bottom:12px;">
+        Ir al aula virtual →
+      </a>` : ''}
+
+      <a href="${link}"
+         style="display:block; text-align:center; background:#0F172A; color:#FFFFFF; text-decoration:none;
+                font-size:14px; font-weight:600; padding:12px 22px; border-radius:10px;">
+        Ver en la Matriz de Seguimiento →
+      </a>
+    </div>
+  </div>
+
+  <p style="max-width:480px; margin:16px auto 0; text-align:center; color:#94A3B8; font-size:11px;">
+    Aviso automático — no hace falta responder a este correo. 🎉
+  </p>
+</div>`.trim();
+}
+
+/**
+ * Avisa por correo, con festejo incluido 🎉, que una asignatura quedó 100%
+ * completa (todos sus pasos visibles en 'terminado') -- incluye el link al
+ * aula virtual si ya se llenó (paso "Link aula" de "Revisión final"). Nunca
+ * lanza.
+ */
+export async function enviarAvisoAsignaturaCompleta(datos: AvisoAsignaturaCompleta): Promise<void> {
+  const t = getTransporter();
+  if (!t) {
+    console.warn(`[mailer] SMTP no configurado — se omite el aviso de finalización a ${datos.paraEmail}`);
+    return;
+  }
+
+  const link = construirLinkAsignatura(datos.subjectId);
+  const confetti = getConfettiGif();
+
+  try {
+    const info = await t.sendMail({
+      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      to: datos.paraEmail,
+      subject: `🎉 ¡Asignatura finalizada!: ${datos.asignatura}`,
+      text:
+        `Hola ${datos.paraNombre},\n\n` +
+        `¡La asignatura "${datos.asignatura}" (${datos.programa}) quedó 100% completa! Todos los pasos de la ` +
+        `matriz están en "Terminado".\n\n` +
+        (datos.linkAula ? `Link del aula virtual: ${datos.linkAula}\n\n` : '') +
+        `Verla en la Matriz de Seguimiento: ${link}\n\n` +
+        `— Matriz de Seguimiento`,
+      html: construirHtmlAsignaturaCompleta(datos, link),
+      // El GIF va adjunto y referenciado por cid: así el correo se ve animado
+      // en Outlook/Gmail sin depender de imágenes remotas.
+      attachments: confetti
+        ? [{ filename: 'confetti.gif', content: confetti, cid: 'confetti', contentDisposition: 'inline' }]
+        : undefined,
+    });
+    console.log(`[mailer] Aviso de finalización enviado a ${datos.paraEmail} (${info.messageId})`);
+  } catch (err) {
+    console.error(`[mailer] No se pudo enviar el aviso de finalización a ${datos.paraEmail}:`, err);
   }
 }

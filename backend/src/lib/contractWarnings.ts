@@ -1,5 +1,6 @@
-import { query, queryOne } from '../db/pool.js';
+import { query } from '../db/pool.js';
 import { enviarAvisoContratoPorVencer } from './mailer.js';
+import { obtenerEncargado } from './encargados.js';
 import {
   buildStepPaths, pasosVisibles, excluirInstanciasExtraSinUsar,
 } from '../../../shared/pipelineTemplate.js';
@@ -56,20 +57,18 @@ export async function revisarContratosPorVencer(): Promise<void> {
 
     if (!candidatos.length) return;
 
-    // Si nadie está asignado como encargado de "Tipo de contrato", no hay a
-    // quién avisar -- se omite todo el lote (se reintenta en la próxima
-    // revisión, ya que contract_warning_sent_at no se toca).
-    const encargado = await queryOne<{ full_name: string; email: string }>(
-      `SELECT u.full_name, u.email FROM category_owners co
-       JOIN users u ON u.id = co.user_id
-       WHERE co.category = 'contrato'`
-    );
-    if (!encargado) {
-      console.warn('[contratos] Nadie asignado como encargado de "Tipo de contrato" -- se omiten los avisos');
-      return;
-    }
-
     for (const c of candidatos) {
+      // El encargado propio de ESTA asignatura para "Tipo de contrato" gana
+      // sobre el global -- puede ser distinto de una asignatura a otra. Si
+      // ninguno de los dos está asignado, se omite solo esta fila (se
+      // reintenta en la próxima revisión, ya que contract_warning_sent_at no
+      // se toca).
+      const encargado = await obtenerEncargado('contrato', c.subject_id);
+      if (!encargado) {
+        console.warn(`[contratos] Nadie asignado como encargado de "Tipo de contrato" en la asignatura ${c.subject_id} -- se omite el aviso`);
+        continue;
+      }
+
       const filas = await query<MatrixCell>('SELECT * FROM matrix_cells WHERE subject_id = $1', [c.subject_id]);
       const celdas: Record<string, MatrixCell> = {};
       for (const fila of filas) celdas[fila.step_path] = fila;

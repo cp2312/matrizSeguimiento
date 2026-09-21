@@ -33,8 +33,8 @@ function IconoLupa({ className }: { className?: string }) {
 
 function IconoChevron({ direccion }: { direccion: 'izquierda' | 'derecha' }) {
   return (
-    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-         strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round">
       <polyline points={direccion === 'izquierda' ? '15 6 9 12 15 18' : '9 6 15 12 9 18'} />
     </svg>
   );
@@ -55,9 +55,13 @@ function BotonNavegarPrograma({
       disabled={!programa}
       title={programa ? programa.name : undefined}
       aria-label={direccion === 'izquierda' ? 'Programa anterior' : 'Programa siguiente'}
-      className="w-7 h-7 shrink-0 inline-flex items-center justify-center rounded-lg text-slate-400
-                 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-25 disabled:cursor-not-allowed
-                 disabled:hover:bg-transparent transition-colors"
+      className="w-6 h-6 shrink-0 inline-flex items-center justify-center rounded-full
+                 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900
+                 text-slate-400 dark:text-slate-500 shadow-sm
+                 hover:text-marca-600 dark:hover:text-marca-400 hover:border-marca-300 dark:hover:border-marca-700
+                 hover:shadow-md hover:scale-110 active:scale-90
+                 disabled:opacity-0 disabled:pointer-events-none disabled:shadow-none disabled:scale-100
+                 transition-all duration-150"
     >
       <IconoChevron direccion={direccion} />
     </button>
@@ -119,7 +123,7 @@ export default function Programa() {
     <Layout ancho="completo">
       <TituloPagina
         titulo={
-          <span className="inline-flex items-center gap-1.5">
+          <span className="inline-flex items-center gap-2">
             <BotonNavegarPrograma
               direccion="izquierda"
               programa={programaAnterior}
@@ -140,6 +144,9 @@ export default function Programa() {
           </Link>
         }
       >
+        <Boton onClick={() => navigate(`/programas/${id}/pendientes`)}>
+          Ver pendientes
+        </Boton>
         <Boton variante="primario" onClick={() => setCreando(true)}>
           Nueva asignatura
         </Boton>

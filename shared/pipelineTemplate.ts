@@ -87,8 +87,28 @@ export const PIPELINE_TEMPLATE: BlockDef[] = [
       },
       { key: 'recepcion_ajustes', label: 'Recepción ajustes', hasComment: true },
       { key: 'revision_par_disciplinar', label: 'Revisión par disciplinar', hasComment: true },
-      { key: 'correccion_estilo', label: 'Corrección de estilo', hasComment: false },
+      {
+        // Igual que reporte_turnitin: repetible a nivel de paso, para cuando
+        // hace falta una segunda pasada de corrección de estilo.
+        key: 'correccion_estilo',
+        label: 'Corrección de estilo',
+        repeatable: { max: 2, itemLabel: 'Corrección de estilo' },
+        hasComment: false,
+      },
       { key: 'envio_diseno_grafico', label: 'Envío a diseño gráfico', hasComment: true },
+      {
+        key: 'isbn',
+        label: 'ISBN',
+        hasComment: true,
+        commentRequired: true,
+        commentLabel: 'ISBN',
+        commentSoloSiTerminado: true,
+        customStates: [
+          { value: 'vacio', label: 'Pendiente' },
+          { value: 'pendiente_equipo', label: 'Enviado a ediciones' },
+          { value: 'terminado', label: 'Recibido / Finalizado' },
+        ],
+      },
       {
         key: 'recepcion_libro_disenado',
         label: 'Recepción de libro diseñado',
@@ -646,4 +666,42 @@ export function pasosVisibles(
 
     return true;
   });
+}
+
+/**
+ * Exige que los pasos de un apartado se completen en orden: dado el
+ * step_path que se quiere abrir/editar, busca -- entre los pasos VISIBLES de
+ * ese mismo apartado (misma instancia de bloque) -- el más cercano por
+ * delante que todavía no esté "terminado". Ese es el que hay que completar
+ * antes. Devuelve null si no hay ninguno (el paso puede empezarse).
+ *
+ * Los reintentos de un mismo paso repetible (p. ej. Reporte Turnitin en
+ * "Libro") no se exigen entre sí -- cada intento nuevo se agrega a mano
+ * justo porque el anterior no pasó, así que encadenarlos rompería ese flujo.
+ * Sí se exige el paso que viene antes de todos los reintentos.
+ */
+export function pasoQueFalta(
+  visiblesDelApartado: ResolvedStep[],
+  path: string,
+  celdas: Record<string, Pick<MatrixCell, 'status'>>
+): ResolvedStep | null {
+  // Si este paso ya se tocó (no está "vacío"), no se re-bloquea -- se puede
+  // seguir editando o completando lo que ya se había empezado, aunque el
+  // anterior siga sin terminar (p. ej. datos de antes de que existiera esta
+  // validación). El candado solo evita EMPEZAR uno nuevo fuera de orden.
+  if (celdas[path] && celdas[path]!.status !== 'vacio') return null;
+
+  const idx = visiblesDelApartado.findIndex((p) => p.path === path);
+  if (idx <= 0) return null;
+  const actual = visiblesDelApartado[idx];
+
+  for (let j = idx - 1; j >= 0; j--) {
+    const anterior = visiblesDelApartado[j];
+    if (actual.step.repeatable && anterior.blockKey === actual.blockKey && anterior.step.key === actual.step.key) {
+      continue;
+    }
+    return celdas[anterior.path]?.status === 'terminado' ? null : anterior;
+  }
+
+  return null;
 }

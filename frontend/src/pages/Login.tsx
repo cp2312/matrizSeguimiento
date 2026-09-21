@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
 import { Campo } from '../components/ui/Campo';
 import { Boton } from '../components/ui/Boton';
 import { Alerta } from '../components/ui/Alerta';
-import { useTema } from '../context/TemaContext';
+import { useTema } from '../context/useTema';
 
 export default function Login() {
   const { login } = useAuth();
@@ -14,7 +14,13 @@ export default function Login() {
   const [searchParams] = useSearchParams();
 
   const destino = (location.state as { from?: string } | null)?.from ?? searchParams.get('from');
-  const redirigirA = destino?.startsWith('/') ? destino : '/';
+  // Solo rutas relativas internas: un destino externo en el query param no
+  // debe poder redirigir fuera de la app (p. ej. "//sitio.com"), ni mandar
+  // de vuelta al propio login en bucle.
+  const redirigirA =
+    destino && destino.startsWith('/') && !destino.startsWith('//') && destino !== '/login'
+      ? destino
+      : '/';
 
   const [form, setForm] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
@@ -29,8 +35,8 @@ export default function Login() {
     try {
       await login(form.email, form.password);
       navigate(redirigirA, { replace: true });
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ocurrió un error');
     } finally {
       setEnviando(false);
     }

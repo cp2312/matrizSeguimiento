@@ -1,10 +1,10 @@
 import { useRef, useState } from 'react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
 import { api } from '../lib/api';
 import { Layout } from '../components/Layout';
 import { TituloPagina } from '../components/ui/TituloPagina';
 import { Avatar } from '../components/ui/Avatar';
-import { Campo } from '../components/ui/Campo';
+import { CampoPassword } from '../components/ui/CampoPassword';
 import { Boton } from '../components/ui/Boton';
 import { Alerta } from '../components/ui/Alerta';
 
@@ -75,8 +75,8 @@ function FotoPerfil({
       await onGuardar(previo);
       setPrevio(null);
       setExito(true);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ocurrió un error');
     } finally {
       setEnviando(false);
     }
@@ -90,8 +90,8 @@ function FotoPerfil({
       await onGuardar(null);
       setPrevio(null);
       setExito(true);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ocurrió un error');
     } finally {
       setEnviando(false);
     }
@@ -179,8 +179,8 @@ function CambiarPassword() {
       setNueva('');
       setConfirmar('');
       setExito(true);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ocurrió un error');
     } finally {
       setEnviando(false);
     }
@@ -188,47 +188,43 @@ function CambiarPassword() {
 
   return (
     <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5">
-      <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Contraseña</h2>
-      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 mb-4">
-        Actualiza la contraseña con la que inicias sesión.
+      <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 text-center">Contraseña</h2>
+      <p className="text-sm text-slate-500 dark:text-slate-400 text-center mt-1 mb-7">
+        Actualiza la contraseña con la que inicias sesión
       </p>
 
       <form onSubmit={enviar} className="space-y-4">
-        <Campo
-          etiqueta="Contraseña actual"
-          type="password"
-          required
-          value={actual}
-          onChange={(e) => setActual(e.target.value)}
-        />
+        <CampoPassword etiqueta="Contraseña actual" valor={actual} onChange={setActual} />
 
-        <Campo
+        <CampoPassword
           etiqueta="Nueva contraseña"
-          type="password"
-          required
+          valor={nueva}
+          onChange={setNueva}
           minLength={8}
           placeholder="Mínimo 8 caracteres"
-          value={nueva}
-          onChange={(e) => setNueva(e.target.value)}
         />
 
-        <Campo
+        <CampoPassword
           etiqueta="Confirmar nueva contraseña"
-          type="password"
-          required
+          valor={confirmar}
+          onChange={setConfirmar}
           minLength={8}
-          value={confirmar}
-          onChange={(e) => setConfirmar(e.target.value)}
         />
 
-        <Alerta>{error}</Alerta>
-        {exito && <Alerta tipo="info">Contraseña actualizada correctamente</Alerta>}
-
-        <div className="flex justify-end pt-1">
-          <Boton variante="primario" type="submit" disabled={enviando}>
-            {enviando ? 'Guardando…' : 'Actualizar contraseña'}
-          </Boton>
+        <div className="min-h-5">
+          <Alerta centrado>{error}</Alerta>
+          {exito && <Alerta tipo="info" centrado>Contraseña actualizada correctamente</Alerta>}
         </div>
+
+        <Boton
+          variante="primario"
+          type="submit"
+          ancho="completo"
+          disabled={enviando}
+          className="bg-marca-600 hover:bg-marca-700 hover:shadow-md active:scale-[0.99]"
+        >
+          {enviando ? 'Guardando…' : 'Actualizar contraseña'}
+        </Boton>
       </form>
     </section>
   );

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Modal } from './ui/Modal';
 import { BloqueProceso } from './BloqueProceso';
 import { PanelCelda } from './PanelCelda';
@@ -103,6 +103,14 @@ export function ModalApartado({
 
   const [pasoSeleccionado, setPasoSeleccionado] = useState<string | null>(null);
 
+  // Si el formulario del paso tiene cambios sin tocar "Guardar", cerrarlo
+  // (Escape, fondo o la X) no los descarta en silencio: se pregunta primero.
+  const panelDirty = useRef(false);
+  const cerrarPanel = useCallback(() => {
+    if (panelDirty.current && !window.confirm('Hay cambios sin guardar en este paso. ¿Salir sin guardar?')) return;
+    setPasoSeleccionado(null);
+  }, []);
+
   function elegir(clave: string) {
     setApartadoManual(clave);
     setVistaManual('detalle');
@@ -206,10 +214,19 @@ export function ModalApartado({
       </Modal>
 
       {/* Ventana propia encima de la del apartado -- así el formulario de un
-          paso no compite por espacio con la lista de pasos de al lado. */}
+          paso no compite por espacio con la lista de pasos de al lado.
+          "Tipo de contrato" va más ancha (mediano) para que los docentes se
+          acomoden uno al lado del otro en vez de apilarse y obligar a
+          scrollear tanto. */}
       {pasoActivo && (
-        <Modal abierto titulo="" ancho="angosto" onCerrar={() => setPasoSeleccionado(null)}>
+        <Modal
+          abierto
+          titulo=""
+          ancho={pasoActivo.path === 'contrato.tipo_contrato' ? 'mediano' : 'angosto'}
+          onCerrar={cerrarPanel}
+        >
           <PanelCelda
+            key={pasoActivo.path}
             subjectId={subjectId}
             paso={pasoActivo}
             celda={celdas[pasoActivo.path]}
@@ -218,8 +235,9 @@ export function ModalApartado({
             onGuardado={onGuardado}
             onTeachersChanged={onTeachersChanged}
             onBookDueDateChanged={(fecha) => onBookDueDateChanged?.(fecha)}
-            onCerrar={() => setPasoSeleccionado(null)}
+            onCerrar={cerrarPanel}
             onRecargar={onRecargar}
+            onDirtyChange={(dirty) => { panelDirty.current = dirty; }}
           />
         </Modal>
       )}

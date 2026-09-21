@@ -70,23 +70,22 @@ export default function Actividad() {
   }
 
   useEffect(() => {
-    setCargando(true);
-    setError('');
     pedirPagina(0)
       .then((res) => { setEntradas(res.entradas); setTotal(res.total); })
-      .catch((err: any) => setError(err.message))
+      .catch((err) => setError(err instanceof Error ? err.message : 'Ocurrió un error'))
       .finally(() => setCargando(false));
   }, []);
 
   async function cargarMas() {
+    if (cargandoMas) return; // evita pedir la misma página dos veces con un doble clic
     setCargandoMas(true);
     setError('');
     try {
       const res = await pedirPagina(entradas.length);
       setEntradas((prev) => [...prev, ...res.entradas]);
       setTotal(res.total);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ocurrió un error');
     } finally {
       setCargandoMas(false);
     }

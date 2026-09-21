@@ -68,6 +68,19 @@ export interface StepDef {
   isBranchPoint?: boolean;
   /** este paso solo se muestra si la decisión indicada tiene cierto valor */
   branchOnlyIf?: { stepKey: string; equals: boolean };
+  /**
+   * Reetiqueta (y restringe) las opciones de estado que se muestran para
+   * este paso puntual -- sigue siendo uno de los 6 CellStatus de siempre por
+   * debajo (así el avance, los colores del tablero, el Excel y los avisos
+   * por correo no cambian), solo cambia cómo se llaman los botones acá (p.
+   * ej. ISBN: "Pendiente" / "Enviado a ediciones" / "Recibido"). Si no está,
+   * se muestran los 6 estados de siempre con su nombre de siempre.
+   */
+  customStates?: { value: CellStatus; label: string }[];
+  /** el campo de comentario (ver hasComment) solo se muestra una vez que el
+   *  estado es 'terminado' -- para datos que solo tienen sentido al cerrar
+   *  el paso (p. ej. el ISBN, que se asigna al recibirlo) */
+  commentSoloSiTerminado?: boolean;
 }
 
 /** Definición de un bloque (sección) del proceso */
@@ -135,6 +148,8 @@ export interface Subject {
   book_due_date: string | null;
   /** última vez que se avisó que no se entregó el libro para esa fecha tentativa */
   book_due_warning_sent_at: string | null;
+  /** última vez que se avisó que esta asignatura quedó 100% completa */
+  completion_email_sent_at: string | null;
   archived: boolean;
   created_at: string;
   updated_at: string;
@@ -190,17 +205,49 @@ export interface ResolvedStep {
   step: StepDef;
 }
 
+/** Un paso pendiente (no 'terminado') de una asignatura, para el reporte "qué falta" de un programa */
+export interface PendienteItem extends ResolvedStep {
+  celda: MatrixCell | null;
+}
+
+export interface PendientesAsignatura {
+  subject: Subject;
+  avance: { terminados: number; total: number; porcentaje: number };
+  pendientes: PendienteItem[];
+}
+
+export interface PendientesPrograma {
+  programa: { id: number; name: string };
+  asignaturas: PendientesAsignatura[];
+}
+
 /**
- * Bloques del proceso que avisan por correo a su encargado cuando un paso
- * queda "En proceso" (pendiente_equipo), o (ovas/podcast/video_contenido/
- * guias) cuando la fecha límite de uno de sus pasos está por vencer. "jefe"
- * es distinto a los demás: no es un bloque del proceso, es a quién se le
- * avisa de CUALQUIER paso (de cualquier apartado) que quede en "Pendiente
+ * Bloques del proceso que avisan por correo a su encargado cuando la fecha
+ * límite de uno de sus pasos puntuales está por vencer (ovas/podcast/
+ * video_contenido/guias/libro, ver StepDef.hasDueDate/autoDueDate y
+ * dueDateWarnings.ts), o "contrato" (avisa por la fecha de fin de contrato
+ * de cada docente, ver contractWarnings.ts -- no por la fecha límite de un
+ * paso, porque "Tipo de contrato" no tiene una). Un paso que solo queda "En
+ * proceso" NUNCA avisa por correo -- solo por fecha límite/contrato/entrega.
+ * "jefe" es distinto a los demás: no es un bloque del proceso, es a quién se
+ * le avisa de CUALQUIER paso (de cualquier apartado) que quede en "Pendiente
  * jefe" -- se maneja con el mismo mecanismo de encargados por conveniencia,
  * no porque sea una categoría más.
  */
 export type CategoriaEncargado =
   | 'contrato' | 'podcast' | 'cuestionario_final' | 'guias' | 'ovas' | 'video_contenido' | 'libro' | 'jefe';
+
+/**
+ * La única categoría cuyo aviso por correo NO depende de la fecha límite de
+ * un paso puntual (ver StepDef.hasDueDate/autoDueDate) -- "contrato" avisa
+ * por la fecha de fin de contrato de cada docente (ver contractWarnings.ts).
+ * Las demás categorías con encargado (ovas, podcast, video_contenido, guias,
+ * libro) solo avisan por su paso con fecha límite. Sirve para decidir, en el
+ * modal de cada paso, si de verdad tiene sentido mostrar ahí el selector de
+ * encargado (ver PanelCelda.tsx) -- "cuestionario_final" no tiene ningún
+ * paso con fecha límite, así que nunca lo muestra.
+ */
+export const CATEGORIAS_SIN_FECHA_EN_PASO: CategoriaEncargado[] = ['contrato'];
 
 export interface CategoryOwner {
   category: CategoriaEncargado;
@@ -208,6 +255,14 @@ export interface CategoryOwner {
   userId: number | null;
   userFullName: string | null;
   userEmail: string | null;
+}
+
+/** Encargado de una categoría para UNA asignatura puntual -- pisa al global (CategoryOwner) solo ahí */
+export interface SubjectCategoryOwner extends CategoryOwner {
+  /** true si esta asignatura tiene su propio encargado; false si está usando el global */
+  esPropio: boolean;
+  /** nombre del encargado global de esta categoría, como referencia cuando esPropio es false */
+  globalUserFullName: string | null;
 }
 
 export const CATEGORIAS_ENCARGADO: Record<CategoriaEncargado, string> = {

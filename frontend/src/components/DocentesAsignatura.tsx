@@ -50,8 +50,8 @@ export function DocentesAsignatura({ subjectId, teachers, onCambiados, onCeldaAc
       );
       onCambiados(resultado.teachers);
       if (resultado.contratoCelda) onCeldaActualizada(resultado.contratoCelda);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ocurrió un error');
     } finally {
       setEnviando(false);
     }

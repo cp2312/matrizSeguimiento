@@ -76,8 +76,8 @@ export default function Asignatura() {
     try {
       await api.del(`/subjects/${asignatura.id}`);
       navigate(`/programas/${asignatura.program_id}`);
-    } catch (err: any) {
-      setErrorBorrado(err.message);
+    } catch (err) {
+      setErrorBorrado(err instanceof Error ? err.message : 'Ocurrió un error');
     } finally {
       setBorrando(false);
     }

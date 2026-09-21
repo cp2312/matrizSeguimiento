@@ -1,13 +1,5 @@
-import { createContext, useContext, useEffect, useState } from 'react';
-
-type Tema = 'claro' | 'oscuro';
-
-interface TemaContext {
-  tema: Tema;
-  alternarTema: () => void;
-}
-
-const TemaContexto = createContext<TemaContext>({ tema: 'claro', alternarTema: () => {} });
+import { useEffect, useState } from 'react';
+import { TemaContexto, type Tema } from './useTema';
 
 const CLAVE = 'matriz-tema';
 
@@ -37,8 +29,4 @@ export function TemaProvider({ children }: { children: React.ReactNode }) {
       {children}
     </TemaContexto.Provider>
   );
-}
-
-export function useTema() {
-  return useContext(TemaContexto);
 }

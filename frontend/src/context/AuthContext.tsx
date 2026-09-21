@@ -1,32 +1,14 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { api } from '../lib/api';
 import { token } from '../lib/token';
-
-export interface Usuario {
-  id: number;
-  full_name: string;
-  initials: string;
-  role: 'usuario' | 'administrador';
-  avatar_url: string | null;
-}
-
-interface Contexto {
-  usuario: Usuario | null;
-  cargando: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
-  /** Actualiza la foto de perfil del usuario en el estado (y devuelve la nueva URL o null) */
-  actualizarAvatar: (avatar: string | null) => Promise<string | null>;
-}
-
-const AuthContexto = createContext<Contexto>(null!);
+import { AuthContexto, type Usuario } from './useAuth';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [usuario, setUsuario] = useState<Usuario | null>(null);
-  const [cargando, setCargando] = useState(true);
+  const [cargando, setCargando] = useState(() => token.get() !== null);
 
   useEffect(() => {
-    if (!token.get()) return setCargando(false);
+    if (!token.get()) return;
 
     api.get<Usuario>('/auth/me')
       .then(setUsuario)
@@ -61,5 +43,3 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     </AuthContexto.Provider>
   );
 }
-
-export const useAuth = () => useContext(AuthContexto);
