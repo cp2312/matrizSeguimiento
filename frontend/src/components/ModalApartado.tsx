@@ -106,10 +106,21 @@ export function ModalApartado({
   // Si el formulario del paso tiene cambios sin tocar "Guardar", cerrarlo
   // (Escape, fondo o la X) no los descarta en silencio: se pregunta primero.
   const panelDirty = useRef(false);
-  const cerrarPanel = useCallback(() => {
-    if (panelDirty.current && !window.confirm('Hay cambios sin guardar en este paso. ¿Salir sin guardar?')) return;
-    setPasoSeleccionado(null);
-  }, []);
+
+  const cerrarModal = useCallback(() => onCerrar(), [onCerrar]);
+
+  // Cerrar desde el formulario del paso: con cambios sin guardar se pregunta y
+  // se vuelve a la lista del apartado; limpio (o recién guardado) se cierra el
+  // modal completo y queda un solo modal en pantalla.
+  const cerrarDesdeForm = useCallback(() => {
+    if (panelDirty.current) {
+      if (!window.confirm('Hay cambios sin guardar en este paso. ¿Salir sin guardar?')) return;
+      panelDirty.current = false;
+      setPasoSeleccionado(null);
+      return;
+    }
+    cerrarModal();
+  }, [cerrarModal]);
 
   function elegir(clave: string) {
     setApartadoManual(clave);
@@ -140,10 +151,13 @@ export function ModalApartado({
         titulo={titulo}
         subtitulo={!cargando && vista === 'detalle' ? `${terminadosActivo} de ${visiblesActivo.length} pasos` : undefined}
         ancho="grande"
-        onCerrar={onCerrar}
+        onCerrar={pasoActivo ? cerrarDesdeForm : cerrarModal}
         accionesTitulo={!cargando ? (
           <button
-            onClick={() => setVistaManual(vista === 'todos' ? null : 'todos')}
+            onClick={() => {
+              setPasoSeleccionado(null);
+              setVistaManual(vista === 'todos' ? null : 'todos');
+            }}
             className="text-[12px] font-medium text-cyan-700 dark:text-cyan-400 hover:text-cyan-900 dark:hover:text-cyan-300 flex items-center gap-1 shrink-0 mt-0.5"
           >
             {vista === 'todos' ? '← Volver' : '▦ Ver todos'}
@@ -187,6 +201,21 @@ export function ModalApartado({
               />
             )}
           </div>
+        ) : grupoActivo && pasoActivo ? (
+          <PanelCelda
+            key={pasoActivo.path}
+            subjectId={subjectId}
+            paso={pasoActivo}
+            celda={celdas[pasoActivo.path]}
+            teachers={teachers}
+            bookDueDate={bookDueDate}
+            onGuardado={onGuardado}
+            onTeachersChanged={onTeachersChanged}
+            onBookDueDateChanged={(fecha) => onBookDueDateChanged?.(fecha)}
+            onCerrar={cerrarDesdeForm}
+            onRecargar={onRecargar}
+            onDirtyChange={(dirty) => { panelDirty.current = dirty; }}
+          />
         ) : grupoActivo && (
           <div className="min-w-0">
             {BLOQUES_VIDEO.has(grupoActivo.pasos[0]?.blockKey) && onCambiarVideoPorDocente && (
@@ -212,33 +241,6 @@ export function ModalApartado({
           </div>
         )}
       </Modal>
-
-      {/* El formulario del paso se muestra como un panel anclado al borde
-          inferior de la pantalla, SIN capa oscura: así no tapa el modal del
-          apartado que ya está abierto y se ve dónde se está editando. */}
-      {pasoActivo && (
-        <Modal
-          abierto
-          titulo=""
-          abajo
-          onCerrar={cerrarPanel}
-        >
-          <PanelCelda
-            key={pasoActivo.path}
-            subjectId={subjectId}
-            paso={pasoActivo}
-            celda={celdas[pasoActivo.path]}
-            teachers={teachers}
-            bookDueDate={bookDueDate}
-            onGuardado={onGuardado}
-            onTeachersChanged={onTeachersChanged}
-            onBookDueDateChanged={(fecha) => onBookDueDateChanged?.(fecha)}
-            onCerrar={cerrarPanel}
-            onRecargar={onRecargar}
-            onDirtyChange={(dirty) => { panelDirty.current = dirty; }}
-          />
-        </Modal>
-      )}
     </>
   );
 }

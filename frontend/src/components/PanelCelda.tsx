@@ -409,6 +409,7 @@ export function PanelCelda({
         }
       );
       onGuardado(celdaGuardada);
+      onDirtyChange?.(false);
       onCerrar();
     } catch (err) {
       // El error se muestra en el modal de confirmación (ver BotonConfirmar),
