@@ -9,15 +9,94 @@ import { AreaTexto } from './ui/AreaTexto';
 import { Boton } from './ui/Boton';
 import { Alerta } from './ui/Alerta';
 import { totalSteps } from '@shared/pipelineTemplate';
-import type { Program, Subject } from '@shared/types';
+import type { Program, Subject, SubjectTeacher } from '@shared/types';
 
 interface Props {
   abierto: boolean;
   programa: Program;
   /** si viene, el modal edita esta asignatura en vez de crear una nueva */
-  asignatura?: Subject | null;
+  asignatura?: (Subject & { teachers?: SubjectTeacher[] }) | null;
   onCerrar: () => void;
   onGuardada: () => void;
+}
+
+/** Formato local de un docente dentro de este formulario -- mismo formato
+ *  que espera el PATCH/POST (ver DocenteEntrada en backend/src/routes/subjects.ts).
+ *  id ausente = docente nuevo; presente = docente ya existente (conserva sus
+ *  fechas y tipo de contrato, que se siguen editando desde "Tipo de contrato"). */
+interface DocenteFormEntry {
+  id?: number;
+  fullName: string;
+  startDate: string | null;
+  endDate: string | null;
+  contractType: string | null;
+}
+
+function aFormEntry(t: SubjectTeacher): DocenteFormEntry {
+  return { id: t.id, fullName: t.full_name, startDate: t.start_date, endDate: t.end_date, contractType: t.contract_type };
+}
+
+/** Lista de docentes asignados, editable de una vez al crear (o editar) la
+ *  asignatura -- antes solo se podían agregar después, desde la página de la
+ *  asignatura ya creada, y quedaba muy escondido. Las fechas y el tipo de
+ *  contrato de cada uno se siguen llenando después, desde "Tipo de contrato". */
+function DocentesForm({ docentes, onCambiar }: { docentes: DocenteFormEntry[]; onCambiar: (d: DocenteFormEntry[]) => void }) {
+  const [nombreNuevo, setNombreNuevo] = useState('');
+
+  // OJO: este bloque vive dentro del <form> principal del modal, así que no
+  // puede tener su propio <form> anidado (HTML no lo permite y el botón de
+  // "Agregar" terminaría enviando el formulario de afuera). Por eso "Agregar"
+  // es type="button" con su propio onClick, y Enter se maneja a mano.
+  function agregar() {
+    if (!nombreNuevo.trim()) return;
+    onCambiar([...docentes, { fullName: nombreNuevo.trim(), startDate: null, endDate: null, contractType: null }]);
+    setNombreNuevo('');
+  }
+
+  function quitar(idx: number) {
+    onCambiar(docentes.filter((_, i) => i !== idx));
+  }
+
+  return (
+    <div className="bg-slate-50 dark:bg-slate-800/60 rounded-lg p-3">
+      <p className="text-[13px] font-medium text-slate-700 dark:text-slate-200 mb-2">Docentes asignados</p>
+
+      {docentes.length > 0 && (
+        <div className="space-y-1.5 mb-2.5">
+          {docentes.map((d, idx) => (
+            <div key={d.id ?? `nuevo-${idx}`} className="flex items-center justify-between bg-white dark:bg-slate-900 rounded-md px-2.5 py-1.5 gap-2">
+              <span className="text-[13px] text-slate-700 dark:text-slate-200 truncate">{d.fullName}</span>
+              <button
+                type="button"
+                onClick={() => quitar(idx)}
+                aria-label={`Quitar a ${d.fullName}`}
+                className="shrink-0 text-slate-400 hover:text-red-600 text-sm leading-none"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex gap-2">
+        <input
+          value={nombreNuevo}
+          onChange={(e) => setNombreNuevo(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); agregar(); } }}
+          placeholder="Nombre del docente"
+          className="flex-1 h-9 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 dark:text-slate-100 text-[13px]
+                     outline-none focus:ring-2 focus:ring-slate-400"
+        />
+        <Boton type="button" onClick={agregar} disabled={!nombreNuevo.trim()} className="h-9 px-3 text-[12px] shrink-0">
+          + Agregar
+        </Boton>
+      </div>
+      <p className="text-[10.5px] text-slate-400 dark:text-slate-500 mt-1.5">
+        Las fechas y el tipo de contrato de cada uno se llenan después, desde el apartado "Tipo de contrato".
+      </p>
+    </div>
+  );
 }
 
 const SEMESTRES = Array.from({ length: 10 }, (_, i) => ({
@@ -50,6 +129,7 @@ export function ModalNuevaAsignatura({ abierto, programa, asignatura, onCerrar, 
 
   const [form, setForm] = useState(VACIO);
   const [libroIgual, setLibroIgual] = useState(true);
+  const [docentes, setDocentes] = useState<DocenteFormEntry[]>([]);
   const [error, setError] = useState('');
   const [enviando, setEnviando] = useState(false);
   // Primer clic en "Guardar" arma la confirmación; el segundo (sobre "Sí,
@@ -71,11 +151,13 @@ export function ModalNuevaAsignatura({ abierto, programa, asignatura, onCerrar, 
       generalComment: asignatura.general_comment ?? '',
     });
     setLibroIgual(!!asignatura.book_name);
+    setDocentes((asignatura.teachers ?? []).map(aFormEntry));
   }
   if (abierto && !asignatura && idCargado !== null) {
     setIdCargado(null);
     setForm(VACIO);
     setLibroIgual(true);
+    setDocentes([]);
   }
   if (!abierto && confirmando) setConfirmando(false);
 
@@ -111,16 +193,18 @@ export function ModalNuevaAsignatura({ abierto, programa, asignatura, onCerrar, 
         modality: pideModalidad ? form.modality : null,
         hybridProgramLabel: pideNombrePrograma ? form.hybridProgramLabel : null,
         bookName: libroIgual ? form.bookName : null,
+        teachers: docentes,
       };
 
       if (esEdicion) {
         await api.patch(`/subjects/${asignatura!.id}`, datos);
       } else {
-        // Los docentes y si el video lo graba el profesor todavía no se saben en este
-        // momento -- se cargan después, desde la página de la asignatura ya creada.
+        // Si lo graba el profesor todavía no se sabe en este momento -- se
+        // marca después, desde la página de la asignatura ya creada.
         await api.post(`/programs/${programa.id}/subjects`, datos);
         setForm(VACIO);
         setLibroIgual(true);
+        setDocentes([]);
       }
 
       setConfirmando(false);
@@ -157,6 +241,8 @@ export function ModalNuevaAsignatura({ abierto, programa, asignatura, onCerrar, 
             />
           </div>
         </div>
+
+        <DocentesForm docentes={docentes} onCambiar={(d) => { setDocentes(d); setConfirmando(false); }} />
 
         {(pideModalidad || pideNombrePrograma) && (
           <div className="bg-teal-50 dark:bg-teal-950/40 rounded-lg p-3">
@@ -210,9 +296,8 @@ export function ModalNuevaAsignatura({ abierto, programa, asignatura, onCerrar, 
             {creditos === 1 ? 'OVA' : 'OVAs'}, {creditos} {creditos === 1 ? 'video' : 'videos'} de
             contenido, {creditos} {creditos === 1 ? 'guía' : 'guías'} y 2 infografías.
             En total {totalSteps(creditos)} pasos.
-            {esEdicion
-              ? ' Si ya hay avance cargado en instancias que queden fuera de este número de créditos, no se pierde -- se sigue viendo y contando igual.'
-              : ' Los docentes se asignan después, ya creada la asignatura.'}
+            {esEdicion &&
+              ' Si ya hay avance cargado en instancias que queden fuera de este número de créditos, no se pierde -- se sigue viendo y contando igual.'}
           </p>
         </div>
 

@@ -1,15 +1,16 @@
 import { Router } from 'express';
 import type { Server as SocketIOServer } from 'socket.io';
-import { query, queryOne } from '../db/pool.js';
+import { query, queryOne, withTransaction } from '../db/pool.js';
 import { enviarAvisoPendiente } from '../lib/mailer.js';
 import { obtenerEncargado } from '../lib/encargados.js';
 import { revisarSiSeCompleto } from '../lib/completionEmail.js';
+import { cargarQuitadas, cargarQuitadasPorPrograma } from '../lib/removedInstances.js';
 import {
   buildStepPaths, isValidStepPath, findStepDef, totalSteps, pasosVisibles, parseStepPath, etiquetaPaso,
-  excluirInstanciasExtraSinUsar, pasoQueFalta,
+  pasosAplicables, pasoQueFalta, computeRepeatCount, bloqueCompletamenteQuitado, esPasoPropagable, PIPELINE_TEMPLATE,
 } from '../../../shared/pipelineTemplate.js';
 import { sumarDiasHabiles } from '../../../shared/businessDays.js';
-import type { MatrixCell, Subject, SubjectTeacher } from '../../../shared/types.js';
+import type { BlockDef, MatrixCell, StepDef, Subject, SubjectTeacher } from '../../../shared/types.js';
 
 /**
  * "Pendiente jefe" avisa siempre a la jefe (categoría especial "jefe"), sin
@@ -51,6 +52,84 @@ async function avisarSiQuedaPendiente(
   }
 }
 
+/**
+ * Copia un paso recién marcado como terminado a las demás instancias del
+ * mismo bloque repetible que todavía lo tengan vacío (ver
+ * shared/pipelineTemplate.ts esPasoPropagable) -- p. ej. al terminar
+ * "Creación de guión" de OVA 1, se completa solo en OVA 2, OVA 3... para no
+ * tener que repetir el mismo dato instancia por instancia en los pasos que
+ * casi siempre se resuelven todos juntos. Nunca pisa una instancia que ya
+ * tiene ese paso tocado a mano, ni crea instancias extra que no existían.
+ * No lanza: si falla, no debe tumbar el guardado que sí se pidió.
+ */
+async function propagarATodasLasInstancias(
+  io: SocketIOServer, subjectId: string, credits: number,
+  block: BlockDef, step: StepDef, instanceOrigen: number,
+  celdaOrigen: MatrixCell, quitadas: ReadonlySet<string>
+): Promise<void> {
+  if (celdaOrigen.status !== 'terminado') return;
+  if (!esPasoPropagable(block, step)) return;
+
+  try {
+    const garantizadas = computeRepeatCount(block, credits);
+    const tope = block.repeatable!.extensible ? block.repeatable!.max : garantizadas;
+    if (tope <= 1) return;
+
+    const celdasDelBloque = await query<MatrixCell>(
+      `SELECT * FROM matrix_cells WHERE subject_id = $1 AND step_path LIKE $2`,
+      [subjectId, `${block.key}.%`]
+    );
+    const porPath = new Map(celdasDelBloque.map((c) => [c.step_path, c]));
+    const instanciasConDatos = new Set(celdasDelBloque.map((c) => Number(c.step_path.split('.')[1])));
+
+    for (let otraInstancia = 1; otraInstancia <= tope; otraInstancia++) {
+      if (otraInstancia === instanceOrigen) continue;
+
+      if (otraInstancia <= garantizadas) {
+        if (quitadas.has(`${block.key}.${otraInstancia}`)) continue;
+      } else if (!instanciasConDatos.has(otraInstancia)) {
+        continue; // no crear de la nada una instancia extra que nadie agregó
+      }
+
+      const targetPath = `${block.key}.${otraInstancia}.${step.key}`;
+      const actual = porPath.get(targetPath);
+      if (actual && actual.status !== 'vacio') continue; // no pisar lo que ya se tocó a mano
+
+      const propagada = await queryOne<MatrixCell>(
+        `INSERT INTO matrix_cells
+           (subject_id, step_path, status, done_date, initials, comment, second_comment, due_date, reference_date, updated_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         ON CONFLICT (subject_id, step_path)
+         DO UPDATE SET
+           status         = EXCLUDED.status,
+           done_date      = EXCLUDED.done_date,
+           initials       = EXCLUDED.initials,
+           comment        = EXCLUDED.comment,
+           second_comment = EXCLUDED.second_comment,
+           due_date       = EXCLUDED.due_date,
+           reference_date = EXCLUDED.reference_date,
+           due_date_warning_sent_at =
+             CASE WHEN matrix_cells.due_date IS DISTINCT FROM EXCLUDED.due_date
+                  THEN NULL ELSE matrix_cells.due_date_warning_sent_at END,
+           version        = matrix_cells.version + 1,
+           updated_by     = EXCLUDED.updated_by
+         RETURNING *`,
+        [
+          subjectId, targetPath, celdaOrigen.status,
+          celdaOrigen.done_date, celdaOrigen.initials,
+          celdaOrigen.comment, celdaOrigen.second_comment,
+          celdaOrigen.due_date, celdaOrigen.reference_date,
+          celdaOrigen.updated_by,
+        ]
+      );
+
+      if (propagada) io.to(`subject:${subjectId}`).emit('cell:updated', propagada);
+    }
+  } catch (err) {
+    console.error('[matrix] Error propagando paso a las demás instancias:', err);
+  }
+}
+
 export function buildMatrixRouter(io: SocketIOServer) {
   const router = Router();
 
@@ -75,17 +154,21 @@ export function buildMatrixRouter(io: SocketIOServer) {
     const celdas: Record<string, MatrixCell> = {};
     for (const fila of filas) celdas[fila.step_path] = fila;
 
+    const quitadas = await cargarQuitadas(req.params.id);
+
     // Los pasos condicionales que ya se descartaron (p. ej. "No hay ajustes") no
     // cuentan para el avance -- si no, nunca se llega al 100% aunque esté todo hecho.
     // Tampoco cuentan las instancias extra de un bloque extensible (p. ej. un
-    // segundo "Video de contenido") mientras no se hayan agregado a mano.
-    const visibles = pasosVisibles(excluirInstanciasExtraSinUsar(pasos, celdas), celdas);
+    // segundo "Video de contenido") mientras no se hayan agregado a mano, ni las
+    // instancias garantizadas que el equipo quitó a mano (ver "quitadas").
+    const visibles = pasosVisibles(pasosAplicables(pasos, celdas, quitadas), celdas);
     const terminados = visibles.filter((p) => celdas[p.path]?.status === 'terminado').length;
 
     res.json({
       asignatura: { ...asignatura, teachers },
       pasos,
       celdas,
+      quitadas: [...quitadas],
       avance: {
         terminados,
         total: visibles.length,
@@ -109,6 +192,16 @@ router.patch('/subjects/:subjectId/matrix/*stepPath', async (req, res) => {
     // El pipeline valida que el paso exista y la instancia esté en rango
     if (!isValidStepPath(stepPath, asignatura.credits)) {
       return res.status(400).json({ error: `El paso "${stepPath}" no aplica a esta asignatura` });
+    }
+
+    // No se puede guardar un paso de una instancia que el equipo quitó a mano
+    // (ver DELETE /instances más abajo) -- hay que agregarla de nuevo primero.
+    const quitadas = await cargarQuitadas(subjectId);
+    {
+      const { blockKey: bk, instance: inst } = parseStepPath(stepPath);
+      if (inst !== null && quitadas.has(`${bk}.${inst}`)) {
+        return res.status(400).json({ error: 'Esta instancia fue quitada -- agrégala de nuevo primero' });
+      }
     }
 
     const def = findStepDef(stepPath)!;
@@ -153,7 +246,7 @@ router.patch('/subjects/:subjectId/matrix/*stepPath', async (req, res) => {
 
       const { blockKey, instance } = parseStepPath(stepPath);
       const pasosDelApartado = pasosVisibles(
-        excluirInstanciasExtraSinUsar(buildStepPaths(asignatura.credits), celdasMap), celdasMap
+        pasosAplicables(buildStepPaths(asignatura.credits), celdasMap, quitadas), celdasMap
       ).filter((p) => p.blockKey === blockKey && p.instance === instance);
 
       const faltante = pasoQueFalta(pasosDelApartado, stepPath, celdasMap);
@@ -233,6 +326,17 @@ router.patch('/subjects/:subjectId/matrix/*stepPath', async (req, res) => {
       void avisarSiQuedaPendiente(
         def.block.label, celdaPrevia?.status, celda, asignatura.name, etiquetaPaso(def.step, instance)
       );
+
+      // Un paso de los "de siempre igual" (antes de la revisión final/ajustes,
+      // ver esPasoPropagable) se completa solo en las demás instancias del
+      // mismo bloque que todavía lo tengan vacío -- se espera a que termine
+      // antes de revisar si la asignatura quedó completa, para que esa
+      // revisión ya vea el estado final.
+      if (instance !== null) {
+        await propagarATodasLasInstancias(
+          io, subjectId, asignatura.credits, def.block, def.step, instance, celda, quitadas
+        );
+      }
       void revisarSiSeCompleto(celda.subject_id);
 
       res.json(celda);
@@ -244,6 +348,119 @@ router.patch('/subjects/:subjectId/matrix/*stepPath', async (req, res) => {
       }
       throw err;
     }
+  });
+
+  // Quitar una instancia de un bloque repetible (p. ej. "OVA 1" que al final
+  // no se hizo, o un "Video de contenido 3" agregado a mano que no hizo
+  // falta) -- borra todas sus celdas y, si es una instancia GARANTIZADA por
+  // créditos (no una extra), además la marca en subject_removed_instances
+  // para que deje de contar en el avance (ver excluirInstanciasQuitadas). Una
+  // instancia extra no necesita esa marca: en cuanto pierde sus celdas
+  // vuelve a quedar oculta sola (ver excluirInstanciasExtraSinUsar).
+  router.delete('/subjects/:subjectId/instances/:blockKey/:instance', async (req, res) => {
+    const { subjectId, blockKey, instance: instanceParam } = req.params;
+
+    const asignatura = await queryOne<Subject>('SELECT * FROM subjects WHERE id = $1', [subjectId]);
+    if (!asignatura) return res.status(404).json({ error: 'Asignatura no encontrada' });
+
+    const block = PIPELINE_TEMPLATE.find((b) => b.key === blockKey);
+    if (!block?.repeatable) {
+      return res.status(400).json({ error: `"${blockKey}" no admite instancias` });
+    }
+
+    const instance = Number(instanceParam);
+    const garantizadas = computeRepeatCount(block, asignatura.credits);
+    const tope = block.repeatable.extensible ? block.repeatable.max : garantizadas;
+    if (!Number.isInteger(instance) || instance < 1 || instance > tope) {
+      return res.status(400).json({ error: 'Esa instancia no existe en este bloque' });
+    }
+
+    const usuario = (req as any).user ?? { id: null };
+
+    await query(
+      `DELETE FROM matrix_cells WHERE subject_id = $1 AND step_path LIKE $2`,
+      [subjectId, `${blockKey}.${instance}.%`]
+    );
+
+    if (instance <= garantizadas) {
+      await query(
+        `INSERT INTO subject_removed_instances (subject_id, block_key, instance, removed_by)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (subject_id, block_key, instance) DO NOTHING`,
+        [subjectId, blockKey, instance, usuario.id]
+      );
+    }
+
+    void revisarSiSeCompleto(Number(subjectId));
+
+    res.status(204).send();
+  });
+
+  // Volver a agregar una instancia garantizada que se había quitado (ver
+  // DELETE de arriba) -- no aplica a instancias extra, esas se agregan de
+  // nuevo solo con guardar cualquier paso suyo.
+  router.post('/subjects/:subjectId/instances/:blockKey/:instance/restaurar', async (req, res) => {
+    const { subjectId, blockKey, instance } = req.params;
+
+    await query(
+      `DELETE FROM subject_removed_instances WHERE subject_id = $1 AND block_key = $2 AND instance = $3`,
+      [subjectId, blockKey, Number(instance)]
+    );
+
+    res.status(204).send();
+  });
+
+  // Bloquear un apartado repetible COMPLETO para esta asignatura (p. ej. "acá
+  // no se usa Infografía") -- quita de una todas sus instancias garantizadas
+  // por créditos, con el mismo mecanismo que el DELETE de instancia suelta de
+  // arriba. Las instancias extra de un bloque extensible no se tocan acá; si
+  // hay alguna en uso, se quita aparte con su propio ícono.
+  router.post('/subjects/:subjectId/blocks/:blockKey/bloquear', async (req, res) => {
+    const { subjectId, blockKey } = req.params;
+
+    const asignatura = await queryOne<Subject>('SELECT * FROM subjects WHERE id = $1', [subjectId]);
+    if (!asignatura) return res.status(404).json({ error: 'Asignatura no encontrada' });
+
+    const block = PIPELINE_TEMPLATE.find((b) => b.key === blockKey);
+    if (!block?.repeatable) {
+      return res.status(400).json({ error: `"${blockKey}" no se puede bloquear` });
+    }
+
+    const garantizadas = computeRepeatCount(block, asignatura.credits);
+    const usuario = (req as any).user ?? { id: null };
+
+    await withTransaction(async (client) => {
+      for (let instance = 1; instance <= garantizadas; instance++) {
+        await client.query(
+          `DELETE FROM matrix_cells WHERE subject_id = $1 AND step_path LIKE $2`,
+          [subjectId, `${blockKey}.${instance}.%`]
+        );
+        await client.query(
+          `INSERT INTO subject_removed_instances (subject_id, block_key, instance, removed_by)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (subject_id, block_key, instance) DO NOTHING`,
+          [subjectId, blockKey, instance, usuario.id]
+        );
+      }
+    });
+
+    void revisarSiSeCompleto(Number(subjectId));
+
+    res.status(204).send();
+  });
+
+  // Desbloquear un apartado repetible completo (ver bloquear de arriba) --
+  // saca todas sus marcas de "quitada", garantizadas o no, así que también
+  // deshace instancias quitadas una por una con el DELETE de instancia suelta.
+  router.post('/subjects/:subjectId/blocks/:blockKey/desbloquear', async (req, res) => {
+    const { subjectId, blockKey } = req.params;
+
+    await query(
+      `DELETE FROM subject_removed_instances WHERE subject_id = $1 AND block_key = $2`,
+      [subjectId, blockKey]
+    );
+
+    res.status(204).send();
   });
 
   // Historial de una asignatura
@@ -278,6 +495,22 @@ router.get('/programs/:id/tablero', async (req, res) => {
     [req.params.id]
   );
 
+  const docentes = await query<SubjectTeacher>(
+    `SELECT t.* FROM subject_teachers t
+     JOIN subjects s ON s.id = t.subject_id
+     WHERE s.program_id = $1 AND NOT s.archived
+     ORDER BY t.id`,
+    [req.params.id]
+  );
+  const docentesPorAsignatura = new Map<number, SubjectTeacher[]>();
+  for (const d of docentes) {
+    const lista = docentesPorAsignatura.get(d.subject_id) ?? [];
+    lista.push(d);
+    docentesPorAsignatura.set(d.subject_id, lista);
+  }
+
+  const quitadasPorAsignatura = await cargarQuitadasPorPrograma(req.params.id);
+
   // Agrupa las celdas por asignatura, indexadas por step_path (para poder
   // resolver branch_value igual que en la matriz de una asignatura)
   const celdasPorAsignatura = new Map<number, Record<string, MatrixCell>>();
@@ -289,13 +522,15 @@ router.get('/programs/:id/tablero', async (req, res) => {
 
   const resultado = asignaturas.map((a) => {
     const celdasDeAsignatura = celdasPorAsignatura.get(a.id) ?? {};
+    const quitadas = quitadasPorAsignatura.get(a.id) ?? new Set<string>();
 
     // Los pasos condicionales ya descartados (p. ej. "No hay ajustes") ni cuentan
     // ni pintan de blanco un bloque que en realidad ya está completo del todo.
     // Tampoco cuentan las instancias extra de un bloque extensible mientras no
     // se hayan agregado a mano -- si no, un "Video de contenido" ya terminado
-    // se pintaría como "En proceso" solo por los cupos extra sin tocar.
-    const pasos = pasosVisibles(excluirInstanciasExtraSinUsar(buildStepPaths(a.credits), celdasDeAsignatura), celdasDeAsignatura);
+    // se pintaría como "En proceso" solo por los cupos extra sin tocar. Ni las
+    // instancias garantizadas que el equipo quitó a mano (ver "quitadas").
+    const pasos = pasosVisibles(pasosAplicables(buildStepPaths(a.credits), celdasDeAsignatura, quitadas), celdasDeAsignatura);
 
     const estados: Record<string, string[]> = {};
     for (const p of pasos) {
@@ -304,9 +539,18 @@ router.get('/programs/:id/tablero', async (req, res) => {
 
     const terminados = pasos.filter((p) => celdasDeAsignatura[p.path]?.status === 'terminado').length;
 
+    // Apartados que el equipo bloqueó del todo para esta asignatura (ver
+    // POST .../blocks/:blockKey/bloquear) -- para pintarlos distinto de "Sin
+    // iniciar" en el tablero, en vez de que se vean iguales.
+    const bloqueados = PIPELINE_TEMPLATE
+      .filter((b) => bloqueCompletamenteQuitado(b, a.credits, quitadas))
+      .map((b) => b.key);
+
     return {
       ...a,
+      teachers: docentesPorAsignatura.get(a.id) ?? [],
       estadosPorBloque: estados,
+      bloqueados,
       avance: Math.round((terminados / pasos.length) * 100),
     };
   });

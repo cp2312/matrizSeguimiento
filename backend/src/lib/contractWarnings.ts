@@ -1,8 +1,9 @@
 import { query } from '../db/pool.js';
 import { enviarAvisoContratoPorVencer } from './mailer.js';
 import { obtenerEncargado } from './encargados.js';
+import { cargarQuitadas } from './removedInstances.js';
 import {
-  buildStepPaths, pasosVisibles, excluirInstanciasExtraSinUsar,
+  buildStepPaths, pasosVisibles, pasosAplicables,
 } from '../../../shared/pipelineTemplate.js';
 import type { MatrixCell } from '../../../shared/types.js';
 
@@ -73,7 +74,8 @@ export async function revisarContratosPorVencer(): Promise<void> {
       const celdas: Record<string, MatrixCell> = {};
       for (const fila of filas) celdas[fila.step_path] = fila;
 
-      const visibles = pasosVisibles(excluirInstanciasExtraSinUsar(buildStepPaths(c.credits), celdas), celdas);
+      const quitadas = await cargarQuitadas(c.subject_id);
+      const visibles = pasosVisibles(pasosAplicables(buildStepPaths(c.credits), celdas, quitadas), celdas);
       const terminados = visibles.filter((p) => celdas[p.path]?.status === 'terminado').length;
       const porcentaje = visibles.length ? Math.round((terminados / visibles.length) * 100) : 100;
 

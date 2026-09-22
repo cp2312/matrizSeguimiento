@@ -366,6 +366,33 @@ COMMENT ON TABLE cell_history IS 'Bitacora automatica de cambios en las celdas d
 
 
 -- ----------------------------------------------------------------------------
+--  subject_removed_instances
+--  Instancias GARANTIZADAS por creditos (p. ej. "OVA 1" con 1 credito) que el
+--  equipo marco como "no aplica" para esta asignatura puntual -- a veces no
+--  se hacen aunque los creditos digan que corresponden. A diferencia de una
+--  instancia EXTRA de un bloque extensible (que se oculta sola en cuanto no
+--  tiene celdas, ver excluirInstanciasExtraSinUsar), una instancia
+--  garantizada sigue generandose siempre por shared/pipelineTemplate.ts, asi
+--  que hace falta guardar aparte cuales se quitaron a mano para que dejen de
+--  contar en el avance (ver excluirInstanciasQuitadas). Quitar sus celdas de
+--  matrix_cells no alcanza por si solo -- sin esta tabla, volverian a
+--  aparecer vacias la proxima vez que se cargue la asignatura.
+-- ----------------------------------------------------------------------------
+CREATE TABLE subject_removed_instances (
+  subject_id INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+  block_key  TEXT    NOT NULL,
+  instance   INTEGER NOT NULL,
+
+  removed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  removed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+
+  PRIMARY KEY (subject_id, block_key, instance)
+);
+
+COMMENT ON TABLE subject_removed_instances IS 'Instancias garantizadas por creditos que el equipo marco como "no aplica" para una asignatura puntual';
+
+
+-- ----------------------------------------------------------------------------
 --  category_owners
 --  A quien se le avisa por correo cuando un paso de esa categoria del
 --  proceso queda pendiente. Una fila fija por categoria monitoreada; el
@@ -461,6 +488,9 @@ CREATE INDEX idx_cells_status  ON matrix_cells(status) WHERE status <> 'vacio';
 
 -- Para consultar el historial mas reciente de una asignatura
 CREATE INDEX idx_history_subject ON cell_history(subject_id, changed_at DESC);
+
+-- Para traer las instancias quitadas de una asignatura (o de todas las de un programa, por JOIN)
+CREATE INDEX idx_removed_instances_subject ON subject_removed_instances(subject_id);
 
 
 -- ============================================================================

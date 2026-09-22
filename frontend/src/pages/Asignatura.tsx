@@ -137,6 +137,7 @@ export default function Asignatura() {
           subjectId={asignatura.id}
           grupos={grupos}
           celdas={celdas}
+          quitadas={datos.quitadas}
           teachers={asignatura.teachers}
           videoPorDocente={asignatura.videos_por_docente}
           bookDueDate={asignatura.book_due_date}

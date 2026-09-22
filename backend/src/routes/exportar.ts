@@ -1,8 +1,9 @@
 import { Router } from 'express';
 import ExcelJS from 'exceljs';
 import { query } from '../db/pool.js';
+import { cargarQuitadasPorPrograma } from '../lib/removedInstances.js';
 import {
-  buildStepPaths, etiquetaPaso, pasosVisibles, excluirInstanciasExtraSinUsar,
+  buildStepPaths, etiquetaPaso, pasosVisibles, pasosAplicables,
 } from '../../../shared/pipelineTemplate.js';
 import type { CellStatus, MatrixCell, Program, Subject, SubjectTeacher } from '../../../shared/types.js';
 
@@ -77,6 +78,8 @@ exportarRouter.get('/exportar', async (_req, res) => {
       docentesPorAsignatura.set(d.subject_id, previo ? `${previo}, ${d.full_name}` : d.full_name);
     }
 
+    const quitadasPorAsignatura = await cargarQuitadasPorPrograma(programa.id);
+
     // Nombre de hoja único (dos programas podrían compartir nombre, o uno
     // llamarse igual truncado a 31 caracteres)
     const base = nombreHojaValido(programa.name);
@@ -115,11 +118,12 @@ exportarRouter.get('/exportar', async (_req, res) => {
 
     for (const a of asignaturas) {
       const celdasAsig = celdasPorAsignatura.get(a.id) ?? {};
+      const quitadas = quitadasPorAsignatura.get(a.id) ?? new Set<string>();
 
       // Mismo cálculo de avance que usa el tablero: solo cuenta los pasos que
       // de verdad aplican a ESTA asignatura según sus créditos reales.
       const visibles = pasosVisibles(
-        excluirInstanciasExtraSinUsar(buildStepPaths(a.credits), celdasAsig), celdasAsig
+        pasosAplicables(buildStepPaths(a.credits), celdasAsig, quitadas), celdasAsig
       );
       const terminados = visibles.filter((p) => celdasAsig[p.path]?.status === 'terminado').length;
       const avance = visibles.length ? Math.round((terminados / visibles.length) * 100) : 0;
@@ -137,6 +141,17 @@ exportarRouter.get('/exportar', async (_req, res) => {
         const columna = ENCABEZADOS_FIJOS.length + 1 + i;
         const celda = celdasAsig[p.path];
         const cell = fila.getCell(columna);
+
+        // Instancia que el equipo quitó a mano (p. ej. "OVA 1" que al final
+        // no se hizo) -- se distingue de "vacío" para que no parezca que
+        // sigue pendiente en el Excel.
+        if (p.instance !== null && quitadas.has(`${p.blockKey}.${p.instance}`)) {
+          cell.value = 'No aplica';
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+          cell.font = { color: { argb: 'FF94A3B8' }, italic: true };
+          cell.alignment = { horizontal: 'center', vertical: 'middle' };
+          return;
+        }
 
         if (!celda || celda.status === 'vacio') {
           cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ESTADOS.vacio.fondo } };

@@ -14,10 +14,13 @@ import { ModalApartado } from '../components/ModalApartado';
 import { ESTADOS, estadoDelBloque } from '../lib/estados';
 import { COLUMNAS_TABLERO, agruparPasos } from '../lib/bloques';
 import { normalizar } from '../lib/texto';
-import type { CellStatus, Program, Subject } from '@shared/types';
+import type { CellStatus, Program, Subject, SubjectTeacher } from '@shared/types';
 
 interface FilaTablero extends Subject {
+  teachers: SubjectTeacher[];
   estadosPorBloque: Record<string, CellStatus[]>;
+  /** claves de bloque que el equipo bloqueó del todo para esta asignatura (ver ModalApartado) */
+  bloqueados: string[];
   avance: number;
 }
 
@@ -27,6 +30,16 @@ function IconoLupa({ className }: { className?: string }) {
          strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="11" cy="11" r="7" />
       <line x1="21" y1="21" x2="16.65" y2="16.65" />
+    </svg>
+  );
+}
+
+function IconoCandado({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="4" y="11" width="16" height="9" rx="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
     </svg>
   );
 }
@@ -235,6 +248,7 @@ export default function Programa() {
           subjectId={celdaAbierta.subjectId}
           grupos={gruposModal}
           celdas={datosVigentes?.celdas ?? {}}
+          quitadas={datosVigentes?.quitadas}
           teachers={datosVigentes?.asignatura.teachers ?? []}
           apartadoInicial={null}
           bloqueInicial={celdaAbierta.blockKey}
@@ -248,7 +262,7 @@ export default function Programa() {
           onGuardado={(celda) => { aplicarCeldaModal(celda); recargar(); }}
           onTeachersChanged={aplicarTeachersModal}
           onCerrar={() => setCeldaAbierta(null)}
-          onRecargar={recargarModal}
+          onRecargar={() => { recargarModal(); recargar(); }}
         />
       )}
 
@@ -297,7 +311,7 @@ function TarjetaAsignatura({
   onEditar: () => void;
   onEliminar: () => void;
 }) {
-  const { id, name, credits, modality, avance } = asignatura;
+  const { id, name, credits, modality, teachers, avance } = asignatura;
 
   return (
     <article className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800
@@ -322,8 +336,9 @@ function TarjetaAsignatura({
               </span>
             )}
           </div>
-          <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">
+          <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5 truncate">
             {credits} {credits === 1 ? 'crédito' : 'créditos'}
+            {teachers.length > 0 && ` · ${teachers.map((t) => t.full_name).join(', ')}`}
           </p>
         </div>
 
@@ -378,6 +393,28 @@ function TarjetaAsignatura({
 
       <div className="px-5 py-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5">
         {COLUMNAS_TABLERO.map((c) => {
+          const bloqueado = asignatura.bloqueados.includes(c.key);
+
+          if (bloqueado) {
+            return (
+              <button
+                key={c.key}
+                type="button"
+                title={`${c.label}: no aplica a esta asignatura`}
+                onClick={() => onAbrirBloque({ key: c.key, label: c.label })}
+                className="group flex items-center gap-2 rounded-lg px-2.5 py-2 text-left
+                           border border-dashed border-slate-300 dark:border-slate-600
+                           bg-slate-50/60 dark:bg-slate-800/30 text-slate-400 dark:text-slate-500
+                           transition-colors hover:border-slate-400 dark:hover:border-slate-500 cursor-pointer"
+              >
+                <IconoCandado className="w-3 h-3 shrink-0" />
+                <span className="text-[11.5px] font-medium leading-tight truncate italic">
+                  {c.label}
+                </span>
+              </button>
+            );
+          }
+
           const estado = estadoDelBloque(asignatura.estadosPorBloque[c.key] ?? []);
           const e = ESTADOS[estado];
           return (

@@ -344,12 +344,14 @@ export const PIPELINE_TEMPLATE: BlockDef[] = [
   },
 
   // --------------------------------------------------------------------------
-  //  Guias — una por credito, maximo 5
+  //  Guias — una por credito, maximo 5. Extensible: si hace falta, se puede
+  //  agregar otra a mano mas alla de lo que corresponde por creditos (y
+  //  quitarla despues si al final no se usa).
   // --------------------------------------------------------------------------
   {
     key: 'guias',
     label: 'Guía',
-    repeatable: { max: 5, perCredit: true, itemLabel: 'Guía' },
+    repeatable: { max: 5, perCredit: true, itemLabel: 'Guía', extensible: true },
     steps: [
       { key: 'recepcion_experto', label: 'Recepción por experto', hasComment: false, hasDueDate: true },
       { key: 'paso_diseno_grafico', label: 'Paso a diseño gráfico', hasComment: false },
@@ -556,6 +558,82 @@ export function excluirInstanciasExtraSinUsar(
   return pasos.filter(
     (p) => p.instance === null || p.garantizada || enUso.has(`${p.blockKey}.${p.instance}`)
   );
+}
+
+/**
+ * Saca las instancias que el equipo marcó a mano como "no aplica" para esta
+ * asignatura puntual -- a diferencia de una instancia EXTRA sin usar (que se
+ * oculta sola en cuanto no tiene celdas, ver excluirInstanciasExtraSinUsar),
+ * una instancia GARANTIZADA por créditos (p. ej. "OVA 1" con 1 crédito)
+ * sigue generándose siempre acá, así que hace falta esta lista aparte (ver
+ * subject_removed_instances en el backend) para que deje de contar en el
+ * avance aunque los créditos digan que corresponde. `quitadas` son claves
+ * "bloque.instancia".
+ */
+export function excluirInstanciasQuitadas(
+  pasos: ResolvedStep[],
+  quitadas: ReadonlySet<string>
+): ResolvedStep[] {
+  if (quitadas.size === 0) return pasos;
+  return pasos.filter((p) => p.instance === null || !quitadas.has(`${p.blockKey}.${p.instance}`));
+}
+
+/**
+ * Un paso "propagable" es de los primeros de un bloque repetible -- antes de
+ * la revisión final (o del punto de decisión de ajustes, si el bloque no
+ * tiene revisión final, como Guías) -- que casi siempre se resuelve igual
+ * para todas las instancias a la vez (p. ej. se escriben los guiones de
+ * todas las OVA juntos, antes de mandarlos a producción; recién en la
+ * revisión final cada una puede salir distinta). Al marcar uno como
+ * terminado, el backend copia el mismo dato a las demás instancias del
+ * bloque que todavía tengan ese paso vacío (ver matrix.ts) -- nunca pisa una
+ * que ya se tocó a mano.
+ */
+export function esPasoPropagable(block: BlockDef, step: StepDef): boolean {
+  if (!block.repeatable) return false;
+
+  for (const s of block.steps) {
+    const esFrontera = s.key === 'revision_final' || !!s.isBranchPoint;
+    if (s.key === step.key) return !esFrontera;
+    if (esFrontera) return false;
+  }
+  return false;
+}
+
+/**
+ * Los pasos que de verdad aplican a esta asignatura: ni instancias extra sin
+ * usar (excluirInstanciasExtraSinUsar) ni instancias quitadas a mano
+ * (excluirInstanciasQuitadas), sean garantizadas por créditos o no. Junta los
+ * dos filtros porque casi todos los que calculan avance/pendientes los usan
+ * siempre juntos.
+ */
+export function pasosAplicables(
+  pasos: ResolvedStep[],
+  celdas: Record<string, Pick<MatrixCell, 'branch_value'>>,
+  quitadas: ReadonlySet<string>
+): ResolvedStep[] {
+  return excluirInstanciasQuitadas(excluirInstanciasExtraSinUsar(pasos, celdas), quitadas);
+}
+
+/**
+ * Si TODAS las instancias garantizadas por créditos de este bloque están
+ * quitadas a mano -- el apartado completo "no aplica" para esta asignatura
+ * (ver bloquear/desbloquear en backend/src/routes/matrix.ts). false si el
+ * bloque no es repetible, o si no tiene ninguna instancia garantizada, o si
+ * queda alguna sin quitar.
+ */
+export function bloqueCompletamenteQuitado(
+  block: BlockDef,
+  credits: number,
+  quitadas: ReadonlySet<string>
+): boolean {
+  if (!block.repeatable) return false;
+  const garantizadas = computeRepeatCount(block, credits);
+  if (garantizadas === 0) return false;
+  for (let i = 1; i <= garantizadas; i++) {
+    if (!quitadas.has(`${block.key}.${i}`)) return false;
+  }
+  return true;
 }
 
 /**

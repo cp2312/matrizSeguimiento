@@ -1,14 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { getSocket } from '../lib/socket';
-import { pasosVisibles, excluirInstanciasExtraSinUsar } from '@shared/pipelineTemplate';
+import { pasosVisibles, pasosAplicables } from '@shared/pipelineTemplate';
 import type { MatrixCell, ResolvedStep, Subject, SubjectTeacher } from '@shared/types';
 
-interface RespuestaMatriz {
+interface RespuestaMatrizCruda {
   asignatura: Subject & { teachers: SubjectTeacher[] };
   pasos: ResolvedStep[];
   celdas: Record<string, MatrixCell>;
+  /** claves "bloque.instancia" de instancias garantizadas que el equipo quitó a mano (ver matrix.ts) */
+  quitadas: string[];
   avance: { terminados: number; total: number; porcentaje: number };
+}
+
+interface RespuestaMatriz extends Omit<RespuestaMatrizCruda, 'quitadas'> {
+  quitadas: Set<string>;
 }
 
 export function useMatriz(subjectId: string | undefined) {
@@ -24,8 +30,10 @@ export function useMatriz(subjectId: string | undefined) {
   const recargar = useCallback(() => {
     if (!subjectId) return;
     const id = ++requestId.current;
-    api.get<RespuestaMatriz>(`/subjects/${subjectId}/matrix`)
-      .then((d) => { if (requestId.current === id) { setDatos(d); setError(null); } })
+    api.get<RespuestaMatrizCruda>(`/subjects/${subjectId}/matrix`)
+      .then((d) => {
+        if (requestId.current === id) { setDatos({ ...d, quitadas: new Set(d.quitadas) }); setError(null); }
+      })
       .catch((e) => { if (requestId.current === id) setError(e.message); })
       .finally(() => { if (requestId.current === id) setCargando(false); });
   }, [subjectId]);
@@ -57,7 +65,7 @@ export function useMatriz(subjectId: string | undefined) {
       if (!prev) return prev;
 
       const celdas = { ...prev.celdas, [celda.step_path]: celda };
-      const visibles = pasosVisibles(excluirInstanciasExtraSinUsar(prev.pasos, celdas), celdas);
+      const visibles = pasosVisibles(pasosAplicables(prev.pasos, celdas, prev.quitadas), celdas);
       const terminados = visibles.filter((p) => celdas[p.path]?.status === 'terminado').length;
 
       return {

@@ -7,7 +7,7 @@ import { Alerta } from './ui/Alerta';
 import { ESTADOS, ORDEN_ESTADOS } from '../lib/estados';
 import { etiquetaPaso } from '../lib/bloques';
 import { sumarDiasHabiles } from '@shared/businessDays';
-import { parseStepPath } from '@shared/pipelineTemplate';
+import { parseStepPath, esPasoPropagable, PIPELINE_TEMPLATE } from '@shared/pipelineTemplate';
 import { CATEGORIAS_ENCARGADO, CATEGORIAS_SIN_FECHA_EN_PASO } from '@shared/types';
 import type { CategoriaEncargado, CellStatus, MatrixCell, ResolvedStep, SubjectCategoryOwner, SubjectTeacher } from '@shared/types';
 
@@ -363,6 +363,15 @@ export function PanelCelda({
   // paso de "Cuestionario final", que no tiene ninguno con fecha límite)
   // nunca disparan un aviso por esa categoría, así que ahí no se muestra.
   const { blockKey } = parseStepPath(path);
+
+  // Pasos de los "de siempre igual" en un bloque repetible (OVA, Podcast,
+  // Video de contenido, Guía, Infografía): al marcarlo como terminado, el
+  // backend lo completa solo en las demás instancias que todavía lo tengan
+  // vacío (ver esPasoPropagable/propagarATodasLasInstancias). Solo informa --
+  // la decisión real la toma el backend al guardar.
+  const bloqueDelPaso = PIPELINE_TEMPLATE.find((b) => b.key === blockKey);
+  const propagable = bloqueDelPaso ? esPasoPropagable(bloqueDelPaso, step) : false;
+
   const tieneCategoria = blockKey in CATEGORIAS_ENCARGADO && blockKey !== 'jefe';
   const avisaPorEstePaso = tieneCategoria
     && (!!step.hasDueDate || !!step.autoDueDate || CATEGORIAS_SIN_FECHA_EN_PASO.includes(blockKey as CategoriaEncargado));
@@ -515,6 +524,12 @@ export function PanelCelda({
             }
           )}
         </div>
+        {propagable && (
+          <p className="mt-2 text-[10px] leading-relaxed text-slate-400 dark:text-slate-500">
+            Al marcar este paso como terminado, se completa solo también en las demás tarjetas de
+            "{bloqueDelPaso!.label}" de esta asignatura que todavía lo tengan vacío.
+          </p>
+        )}
       </section>
 
       {/* Decisión del paso */}
@@ -538,7 +553,11 @@ export function PanelCelda({
         </section>
       )}
 
-      {/* Fechas */}
+      {/* Fechas -- "Tipo de contrato" ya tiene sus propias fechas por docente
+          arriba (ver DocentesContrato) y no tiene fecha límite propia, así
+          que no repite "Fecha de terminado" acá: se guarda sola con la fecha
+          de hoy al marcarlo como terminado. */}
+      {!esTipoContrato && (
       <section className="mb-5">
         <h3 className={ETIQUETA_SECCION}>Fechas</h3>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -591,6 +610,7 @@ export function PanelCelda({
           </p>
         )}
       </section>
+      )}
 
       {/* Comentarios */}
       {(step.hasComment || step.hasSecondComment) && (

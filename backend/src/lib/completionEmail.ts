@@ -1,7 +1,8 @@
 import { query, queryOne } from '../db/pool.js';
 import { enviarAvisoAsignaturaCompleta } from './mailer.js';
 import { obtenerEncargado } from './encargados.js';
-import { buildStepPaths, pasosVisibles, excluirInstanciasExtraSinUsar } from '../../../shared/pipelineTemplate.js';
+import { cargarQuitadas } from './removedInstances.js';
+import { buildStepPaths, pasosVisibles, pasosAplicables } from '../../../shared/pipelineTemplate.js';
 import type { MatrixCell, Subject } from '../../../shared/types.js';
 
 /** step_path del paso "Link aula" -- no repetible, siempre esta misma ruta */
@@ -27,7 +28,8 @@ export async function revisarSiSeCompleto(subjectId: number): Promise<void> {
     const celdas: Record<string, MatrixCell> = {};
     for (const fila of filas) celdas[fila.step_path] = fila;
 
-    const visibles = pasosVisibles(excluirInstanciasExtraSinUsar(buildStepPaths(asignatura.credits), celdas), celdas);
+    const quitadas = await cargarQuitadas(subjectId);
+    const visibles = pasosVisibles(pasosAplicables(buildStepPaths(asignatura.credits), celdas, quitadas), celdas);
     const terminados = visibles.filter((p) => celdas[p.path]?.status === 'terminado').length;
     const completa = visibles.length > 0 && terminados === visibles.length;
 

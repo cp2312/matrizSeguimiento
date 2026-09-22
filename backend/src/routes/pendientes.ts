@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { query, queryOne } from '../db/pool.js';
-import { buildStepPaths, pasosVisibles, excluirInstanciasExtraSinUsar } from '../../../shared/pipelineTemplate.js';
+import { cargarQuitadasPorPrograma } from '../lib/removedInstances.js';
+import { buildStepPaths, pasosVisibles, pasosAplicables } from '../../../shared/pipelineTemplate.js';
 import type { MatrixCell, PendientesPrograma, Subject } from '../../../shared/types.js';
 
 export const pendientesRouter = Router();
@@ -24,6 +25,7 @@ pendientesRouter.get('/programs/:id/pendientes', async (req, res) => {
     [programId]
   );
 
+  const quitadasPorAsignatura = await cargarQuitadasPorPrograma(programId);
   const resultado: PendientesPrograma['asignaturas'] = [];
 
   for (const subject of asignaturas) {
@@ -31,7 +33,8 @@ pendientesRouter.get('/programs/:id/pendientes', async (req, res) => {
     const celdas: Record<string, MatrixCell> = {};
     for (const fila of filas) celdas[fila.step_path] = fila;
 
-    const visibles = pasosVisibles(excluirInstanciasExtraSinUsar(buildStepPaths(subject.credits), celdas), celdas);
+    const quitadas = quitadasPorAsignatura.get(subject.id) ?? new Set<string>();
+    const visibles = pasosVisibles(pasosAplicables(buildStepPaths(subject.credits), celdas, quitadas), celdas);
     const terminados = visibles.filter((p) => celdas[p.path]?.status === 'terminado').length;
 
     resultado.push({

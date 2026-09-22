@@ -11,11 +11,26 @@ export interface GrupoPasos {
   pasos: ResolvedStep[];
 }
 
-export interface InstanciaExtra {
-  /** clave del apartado que abriría (p. ej. "video_contenido.2") */
+export interface InstanciaParaAgregar {
+  /** clave del apartado que abriría (p. ej. "video_contenido.2"); para 'desbloquear-bloque' es solo el blockKey */
   clave: string;
-  /** nombre que tendría esa instancia (p. ej. "Video de contenido 2") */
+  /** nombre a mostrar (p. ej. "Video de contenido 2", o "Infografía" para 'desbloquear-bloque') */
   etiqueta: string;
+  blockKey: string;
+  /** no aplica (0) cuando accion es 'desbloquear-bloque' -- ese llamado es a nivel de bloque, no de una instancia */
+  instance: number;
+  /**
+   * 'agregar': instancia extra que todavía nunca existió (ver
+   * BlockDef.repeatable.extensible) -- se agrega sola al guardar cualquier
+   * paso suyo. 'restaurar': instancia garantizada por créditos que el equipo
+   * había quitado a mano (ver subject_removed_instances) -- hace falta
+   * llamar al endpoint de restaurar antes de poder volver a editarla.
+   * 'desbloquear-bloque': TODAS las instancias garantizadas de este bloque
+   * están quitadas -- el apartado completo está bloqueado, así que se
+   * muestra una sola tarjeta en vez de una por instancia (ver
+   * bloqueCompletamenteQuitado).
+   */
+  accion: 'agregar' | 'restaurar' | 'desbloquear-bloque';
 }
 
 // Solo "Video de contenido" se renombra a "Video tutorial" -- "Video de
@@ -50,35 +65,74 @@ export function agruparPasos(pasos: ResolvedStep[], opciones?: { videoPorDocente
 /**
  * Separa los apartados de `agruparPasos` (sin filtrar) en dos:
  *  - `visibles`: los que se muestran como tarjeta -- todo lo garantizado por
- *    créditos, más las instancias extra de un bloque extensible que ya
- *    tienen algún dato guardado.
- *  - `siguientesExtra`: por cada bloque extensible con cupo libre, la
- *    próxima instancia oculta que se podría agregar (para el botón
- *    "+ Agregar video" de ApartadosAsignatura).
+ *    créditos (y no quitado a mano), más las instancias extra de un bloque
+ *    extensible que ya tienen algún dato guardado.
+ *  - `paraAgregar`: tarjetas punteadas para traer de vuelta una instancia que
+ *    no se ve ahora -- la próxima instancia extra oculta de cada bloque
+ *    extensible con cupo libre (accion 'agregar'), más las instancias
+ *    garantizadas que el equipo quitó a mano (accion 'restaurar', ver
+ *    `quitadas`). Si TODAS las garantizadas de un mismo bloque están
+ *    quitadas, en vez de una tarjeta de "restaurar" por cada una se junta en
+ *    una sola de accion 'desbloquear-bloque' -- así se ve claro que el
+ *    apartado completo está bloqueado, no que sencillamente hay cupos
+ *    sueltos para agregar.
  */
 export function separarGruposVisibles(
   grupos: Record<string, GrupoPasos>,
-  celdas: Record<string, Pick<MatrixCell, 'branch_value'>>
-): { visibles: Record<string, GrupoPasos>; siguientesExtra: InstanciaExtra[] } {
+  celdas: Record<string, Pick<MatrixCell, 'branch_value'>>,
+  quitadas: ReadonlySet<string> = new Set()
+): { visibles: Record<string, GrupoPasos>; paraAgregar: InstanciaParaAgregar[] } {
   const enUso = instanciasExtraEnUso(Object.values(grupos).flatMap((g) => g.pasos), celdas);
 
   const visibles: Record<string, GrupoPasos> = {};
-  const siguientesExtra = new Map<string, InstanciaExtra>();
+  const siguienteExtraPorBloque = new Map<string, InstanciaParaAgregar>();
+  const restaurablesPorBloque = new Map<string, InstanciaParaAgregar[]>();
+  const garantizadasTotalPorBloque = new Map<string, number>();
 
   for (const [clave, g] of Object.entries(grupos)) {
     const p0 = g.pasos[0];
-    const esExtra = p0 && p0.instance !== null && !p0.garantizada;
 
-    if (!esExtra || enUso.has(`${p0!.blockKey}.${p0!.instance}`)) {
+    if (!p0 || p0.instance === null) {
       visibles[clave] = g;
-    } else if (!siguientesExtra.has(p0!.blockKey)) {
+      continue;
+    }
+
+    if (p0.garantizada) {
+      garantizadasTotalPorBloque.set(p0.blockKey, (garantizadasTotalPorBloque.get(p0.blockKey) ?? 0) + 1);
+    }
+
+    const claveInstancia = `${p0.blockKey}.${p0.instance}`;
+
+    if (quitadas.has(claveInstancia)) {
+      const lista = restaurablesPorBloque.get(p0.blockKey) ?? [];
+      lista.push({ clave, etiqueta: g.titulo, blockKey: p0.blockKey, instance: p0.instance, accion: 'restaurar' });
+      restaurablesPorBloque.set(p0.blockKey, lista);
+      continue;
+    }
+
+    const esExtra = !p0.garantizada;
+    if (!esExtra || enUso.has(claveInstancia)) {
+      visibles[clave] = g;
+    } else if (!siguienteExtraPorBloque.has(p0.blockKey)) {
       // La primera instancia oculta de este bloque, en orden -- las de más
       // allá esperan su turno (se agregan de a una).
-      siguientesExtra.set(p0!.blockKey, { clave, etiqueta: g.titulo });
+      siguienteExtraPorBloque.set(p0.blockKey, { clave, etiqueta: g.titulo, blockKey: p0.blockKey, instance: p0.instance, accion: 'agregar' });
     }
   }
 
-  return { visibles, siguientesExtra: [...siguientesExtra.values()] };
+  const paraAgregar: InstanciaParaAgregar[] = [];
+  for (const [blockKey, lista] of restaurablesPorBloque) {
+    const totalGarantizadas = garantizadasTotalPorBloque.get(blockKey) ?? 0;
+    if (totalGarantizadas > 0 && lista.length === totalGarantizadas) {
+      const blockLabel = PIPELINE_TEMPLATE.find((b) => b.key === blockKey)?.label ?? blockKey;
+      paraAgregar.push({ clave: blockKey, etiqueta: blockLabel, blockKey, instance: 0, accion: 'desbloquear-bloque' });
+    } else {
+      paraAgregar.push(...lista);
+    }
+  }
+  paraAgregar.push(...siguienteExtraPorBloque.values());
+
+  return { visibles, paraAgregar };
 }
 
 const ABREVIATURAS: Record<string, string> = {
