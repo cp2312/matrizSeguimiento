@@ -16,6 +16,7 @@ import { auditoriaRouter } from './routes/auditoria.js';
 import { exportarRouter } from './routes/exportar.js';
 import { pendientesRouter } from './routes/pendientes.js';
 import { settingsRouter } from './routes/settings.js';
+import { dashboardRouter } from './routes/dashboard.js';
 import { revisarContratosPorVencer } from './lib/contractWarnings.js';
 import { revisarFechasLimite } from './lib/dueDateWarnings.js';
 import { revisarLibroNoEntregado } from './lib/bookWarnings.js';
@@ -52,6 +53,7 @@ app.use('/api', requireAuth, auditoriaRouter);
 app.use('/api', requireAuth, exportarRouter);
 app.use('/api', requireAuth, pendientesRouter);
 app.use('/api', requireAuth, settingsRouter);
+app.use('/api', requireAuth, dashboardRouter);
 
 app.use((err: any, _req: any, res: any, _next: any) => {
   // JSON malformado del cliente -> 400, no un 500 genérico

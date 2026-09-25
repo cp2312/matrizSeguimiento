@@ -191,7 +191,7 @@ export const PIPELINE_TEMPLATE: BlockDef[] = [
     label: 'OVA',
     repeatable: { max: 5, perCredit: true, itemLabel: 'OVA', extensible: true },
     steps: [
-      { key: 'creacion_guion', label: 'Creación de guión', hasComment: false, hasDueDate: true },
+      { key: 'creacion_guion', label: 'Creación de guión', hasComment: false },
       { key: 'paso_diseno_grafico', label: 'Paso a diseño gráfico', hasComment: false },
       { key: 'revision_final', label: 'Revisión final', hasComment: false },
       { key: 'hay_ajustes', label: '¿Hay ajustes?', hasComment: false, isBranchPoint: true },
@@ -281,7 +281,13 @@ export const PIPELINE_TEMPLATE: BlockDef[] = [
     label: 'Video de contenido',
     repeatable: { max: 5, perCredit: true, itemLabel: 'Video de contenido', extensible: true },
     steps: [
-      { key: 'creacion_guion', label: 'Creación de guión', hasComment: false, hasDueDate: true },
+      {
+        key: 'creacion_guion', label: 'Creación de guión', hasComment: false,
+        // Fecha límite solo cuando lo graba el profesor (ver videos_por_docente
+        // en Subject) -- ahí sí hace falta una fecha dura para su entrega. Cuando
+        // lo hace el equipo, se sigue por el pipeline normal sin fecha límite.
+        dueDateSoloVideoTutorial: true,
+      },
       { key: 'solicitud_audios', label: 'Solicitud de audios', hasComment: false },
       { key: 'paso_desarrollo', label: 'Paso a desarrollo', hasComment: false },
       { key: 'revision_final', label: 'Revisión final', hasComment: false },
@@ -324,7 +330,7 @@ export const PIPELINE_TEMPLATE: BlockDef[] = [
     key: 'cuestionario_final',
     label: 'Cuestionario final',
     steps: [
-      { key: 'recepcion_experto', label: 'Recepción por experto', hasComment: false },
+      { key: 'recepcion_experto', label: 'Recepción por experto', hasComment: false, hasDueDate: true },
       { key: 'revision_cuestionario', label: 'Revisión cuestionario', hasComment: false },
       { key: 'hay_ajustes', label: '¿Hay ajustes?', hasComment: false, isBranchPoint: true },
       {
@@ -353,7 +359,7 @@ export const PIPELINE_TEMPLATE: BlockDef[] = [
     label: 'Guía',
     repeatable: { max: 5, perCredit: true, itemLabel: 'Guía', extensible: true },
     steps: [
-      { key: 'recepcion_experto', label: 'Recepción por experto', hasComment: false, hasDueDate: true },
+      { key: 'recepcion_experto', label: 'Recepción por experto', hasComment: false },
       { key: 'paso_diseno_grafico', label: 'Paso a diseño gráfico', hasComment: false },
       { key: 'hay_ajustes', label: '¿Hay ajustes?', hasComment: false, isBranchPoint: true },
       {
@@ -659,6 +665,20 @@ export function parseStepPath(path: string): {
   return partes.length === 3
     ? { blockKey: partes[0], instance: Number(partes[1]), stepKey: partes[2] }
     : { blockKey: partes[0], instance: null, stepKey: partes[1] };
+}
+
+/**
+ * Si este paso pide fecha límite para esta asignatura en concreto -- igual
+ * que StepDef.hasDueDate, salvo "Creación de guión" de Video de contenido
+ * (StepDef.dueDateSoloVideoTutorial), que solo la pide cuando el video lo
+ * graba el profesor. Toda la app (frontend y backend) debe consultar esta
+ * función en vez de leer `step.hasDueDate` directo, para que ese caso quede
+ * bien resuelto en un solo lugar.
+ */
+export function pasoPideFechaLimite(step: StepDef, videoPorDocente: boolean): boolean {
+  if (step.hasDueDate) return true;
+  if (step.dueDateSoloVideoTutorial) return videoPorDocente;
+  return false;
 }
 
 /** Busca la definicion de un paso a partir de su step_path. null si no existe. */

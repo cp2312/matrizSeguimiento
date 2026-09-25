@@ -6,12 +6,12 @@ import { findStepDef, etiquetaPaso, parseStepPath } from '../../../shared/pipeli
 /** Con cuántos días de anticipación a la fecha límite se dispara el aviso */
 const DIAS_AVISO = 7;
 
-/** Los pasos con StepDef.hasDueDate viven en estos bloques -- cada uno con su propio encargado */
+/** Los pasos con StepDef.hasDueDate (o hasDueDate condicional, ver
+ *  pasoPideFechaLimite) viven en estos bloques -- cada uno con su propio encargado */
 const CATEGORIA_POR_BLOQUE: Record<string, string> = {
-  ovas: 'ovas',
   podcast: 'podcast',
   video_contenido: 'video_contenido',
-  guias: 'guias',
+  cuestionario_final: 'cuestionario_final',
   libro: 'libro',
 };
 
@@ -32,12 +32,13 @@ function diasHasta(dueDate: string): number {
 }
 
 /**
- * Revisa todos los pasos con fecha límite (OVA/Podcast/Video de contenido:
- * "Creación de guión"; Guías: "Recepción por experto"; Libro: "Envío para
- * ajustes de experto") que están por vencer (o ya vencieron), todavía no
- * están en 'terminado' y a los que no se les avisó, y le avisa por correo al
- * encargado de esa categoría. Se corre periódicamente (ver index.ts) --
- * nunca lanza.
+ * Revisa todos los pasos con fecha límite (Podcast: "Creación de guión";
+ * Video de contenido: "Creación de guión", solo cuando lo graba el profesor
+ * -- ver pasoPideFechaLimite; Cuestionario final: "Recepción por experto";
+ * Libro: "Envío para ajustes de experto") que están por vencer (o ya
+ * vencieron), todavía no están en 'terminado' y a los que no se les avisó, y
+ * le avisa por correo al encargado de esa categoría. Se corre
+ * periódicamente (ver index.ts) -- nunca lanza.
  */
 export async function revisarFechasLimite(): Promise<void> {
   try {

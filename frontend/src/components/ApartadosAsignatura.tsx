@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { api } from '../lib/api';
 import { ModalApartado } from './ModalApartado';
 import { ItemApartado } from './ItemApartado';
+import { ModalConfirmar } from './ui/ModalConfirmar';
+import { Alerta } from './ui/Alerta';
 import { separarGruposVisibles } from '../lib/bloques';
 import type { GrupoPasos } from '../lib/bloques';
 import type { MatrixCell, SubjectTeacher } from '@shared/types';
@@ -51,36 +53,54 @@ export function ApartadosAsignatura({
   // muestra como tarjeta hasta que se agregan/restauran.
   const { visibles, paraAgregar } = separarGruposVisibles(grupos, celdas, quitadas);
 
-  async function quitarInstancia(blockKey: string, instance: number, etiqueta: string) {
-    if (!window.confirm(`¿Quitar "${etiqueta}"? Se pierde todo su avance guardado.`)) return;
+  // "Quitar" pide confirmación con el modal propio de la app (no el nativo
+  // del navegador) -- se pierde avance guardado, así que sigue avisando antes.
+  const [quitando, setQuitando] = useState<{ blockKey: string; instance: number; etiqueta: string } | null>(null);
+  const [enviandoQuitar, setEnviandoQuitar] = useState(false);
+  const [errorQuitar, setErrorQuitar] = useState('');
+  // Restaurar/desbloquear no son destructivos -- no piden confirmación, solo
+  // muestran el error acá si algo falla (en vez del alert nativo).
+  const [errorAccion, setErrorAccion] = useState('');
+
+  async function confirmarQuitar() {
+    if (!quitando) return;
+    setEnviandoQuitar(true);
+    setErrorQuitar('');
     try {
-      await api.del(`/subjects/${subjectId}/instances/${blockKey}/${instance}`);
+      await api.del(`/subjects/${subjectId}/instances/${quitando.blockKey}/${quitando.instance}`);
       onRecargar?.();
+      setQuitando(null);
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : 'No se pudo quitar');
+      setErrorQuitar(err instanceof Error ? err.message : 'No se pudo quitar');
+    } finally {
+      setEnviandoQuitar(false);
     }
   }
 
   async function restaurarInstancia(blockKey: string, instance: number) {
+    setErrorAccion('');
     try {
       await api.post(`/subjects/${subjectId}/instances/${blockKey}/${instance}/restaurar`, {});
       onRecargar?.();
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : 'No se pudo restaurar');
+      setErrorAccion(err instanceof Error ? err.message : 'No se pudo restaurar');
     }
   }
 
   async function desbloquearApartado(blockKey: string) {
+    setErrorAccion('');
     try {
       await api.post(`/subjects/${subjectId}/blocks/${blockKey}/desbloquear`, {});
       onRecargar?.();
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : 'No se pudo desbloquear');
+      setErrorAccion(err instanceof Error ? err.message : 'No se pudo desbloquear');
     }
   }
 
   return (
     <>
+      <Alerta>{errorAccion}</Alerta>
+
       <div className="grid sm:grid-cols-2 gap-2">
         {Object.entries(visibles).map(([clave, g]) => {
           const p0 = g.pasos[0];
@@ -92,7 +112,7 @@ export function ApartadosAsignatura({
               pasos={g.pasos}
               celdas={celdas}
               onClick={() => setApartado(clave)}
-              onEliminar={esInstancia ? () => quitarInstancia(p0.blockKey, p0.instance!, g.titulo) : undefined}
+              onEliminar={esInstancia ? () => setQuitando({ blockKey: p0.blockKey, instance: p0.instance!, etiqueta: g.titulo }) : undefined}
             />
           );
         })}
@@ -146,6 +166,18 @@ export function ApartadosAsignatura({
         onTeachersChanged={onTeachersChanged}
         onCerrar={() => setApartado(null)}
         onRecargar={onRecargar}
+      />
+
+      <ModalConfirmar
+        abierto={!!quitando}
+        titulo="Quitar instancia"
+        mensaje={<>¿Quitar <strong>{quitando?.etiqueta}</strong>? Se pierde todo su avance guardado.</>}
+        textoConfirmar="Sí, quitar"
+        variante="peligro"
+        enviando={enviandoQuitar}
+        error={errorQuitar}
+        onCancelar={() => setQuitando(null)}
+        onConfirmar={confirmarQuitar}
       />
     </>
   );

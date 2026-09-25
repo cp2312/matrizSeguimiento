@@ -11,6 +11,7 @@ import Pendientes from './pages/Pendientes';
 import Asignatura from './pages/Asignatura';
 import Configuracion from './pages/Configuracion';
 import Actividad from './pages/Actividad';
+import Dashboard from './pages/Dashboard';
 
 function Protegida({ children }: { children: React.ReactNode }) {
   const { usuario, cargando } = useAuth();
@@ -43,6 +44,11 @@ export default function App() {
           <Route
             path="/"
             element={<Protegida><ListadoProgramas /></Protegida>}
+          />
+
+          <Route
+            path="/dashboard"
+            element={<Protegida><Dashboard /></Protegida>}
           />
 
           <Route

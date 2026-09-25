@@ -2,6 +2,7 @@ import { Router } from 'express';
 import type { PoolClient } from 'pg';
 import { query, queryOne, withTransaction } from '../db/pool.js';
 import { totalSteps } from '../../../shared/pipelineTemplate.js';
+import { hoyISO } from '../../../shared/businessDays.js';
 import type { MatrixCell, Subject, SubjectTeacher } from '../../../shared/types.js';
 
 export const subjectsRouter = Router();
@@ -216,6 +217,10 @@ subjectsRouter.patch('/subjects/:id', async (req, res) => {
   if (b.teachers !== undefined) {
     const errorDocentes = validarDocentes(b.teachers);
     if (errorDocentes) return res.status(400).json({ error: errorDocentes });
+  }
+
+  if (b.bookDueDate && b.bookDueDate < hoyISO()) {
+    return res.status(400).json({ error: 'La fecha tentativa no puede ser anterior a hoy' });
   }
 
   try {

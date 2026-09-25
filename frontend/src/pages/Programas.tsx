@@ -259,6 +259,8 @@ export default function Programa() {
             await api.patch(`/subjects/${celdaAbierta.subjectId}`, { videosPorDocente: checked });
             recargarModal();
           }}
+          bookDueDate={datosVigentes?.asignatura.book_due_date ?? null}
+          onBookDueDateChanged={() => recargarModal()}
           onGuardado={(celda) => { aplicarCeldaModal(celda); recargar(); }}
           onTeachersChanged={aplicarTeachersModal}
           onCerrar={() => setCeldaAbierta(null)}

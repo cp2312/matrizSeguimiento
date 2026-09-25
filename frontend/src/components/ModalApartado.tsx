@@ -2,6 +2,8 @@ import { useCallback, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { Modal } from './ui/Modal';
 import { Boton } from './ui/Boton';
+import { ModalConfirmar } from './ui/ModalConfirmar';
+import { Alerta } from './ui/Alerta';
 import { BloqueProceso } from './BloqueProceso';
 import { PanelCelda } from './PanelCelda';
 import { ItemApartado } from './ItemApartado';
@@ -158,8 +160,10 @@ export function ModalApartado({
   const [pasoSeleccionado, setPasoSeleccionado] = useState<string | null>(null);
 
   // Si el formulario del paso tiene cambios sin tocar "Guardar", cerrarlo
-  // (Escape, fondo o la X) no los descarta en silencio: se pregunta primero.
+  // (Escape, fondo o la X) no los descarta en silencio: se pregunta primero,
+  // con el modal de confirmación propio de la app (no el nativo del navegador).
   const panelDirty = useRef(false);
+  const [confirmandoSalir, setConfirmandoSalir] = useState(false);
 
   const cerrarModal = useCallback(() => onCerrar(), [onCerrar]);
 
@@ -168,13 +172,17 @@ export function ModalApartado({
   // modal completo y queda un solo modal en pantalla.
   const cerrarDesdeForm = useCallback(() => {
     if (panelDirty.current) {
-      if (!window.confirm('Hay cambios sin guardar en este paso. ¿Salir sin guardar?')) return;
-      panelDirty.current = false;
-      setPasoSeleccionado(null);
+      setConfirmandoSalir(true);
       return;
     }
     cerrarModal();
   }, [cerrarModal]);
+
+  function confirmarSalirSinGuardar() {
+    panelDirty.current = false;
+    setConfirmandoSalir(false);
+    setPasoSeleccionado(null);
+  }
 
   function elegir(clave: string) {
     setApartadoManual(clave);
@@ -182,22 +190,40 @@ export function ModalApartado({
     setPasoSeleccionado(null);
   }
 
-  async function quitarInstancia(blockKey: string, instance: number, etiqueta: string) {
-    if (!window.confirm(`¿Quitar "${etiqueta}"? Se pierde todo su avance guardado.`)) return;
+  // "Quitar" y "Bloquear" pierden avance guardado, así que siguen pidiendo
+  // confirmación -- con el modal propio de la app en vez del nativo del
+  // navegador. Restaurar/desbloquear no son destructivos: no la piden, solo
+  // muestran el error acá si algo falla.
+  const [quitando, setQuitando] = useState<{ blockKey: string; instance: number; etiqueta: string } | null>(null);
+  const [enviandoQuitar, setEnviandoQuitar] = useState(false);
+  const [errorQuitar, setErrorQuitar] = useState('');
+  const [confirmandoBloquear, setConfirmandoBloquear] = useState<string | null>(null);
+  const [enviandoBloquear, setEnviandoBloquear] = useState(false);
+  const [errorBloquear, setErrorBloquear] = useState('');
+  const [errorAccion, setErrorAccion] = useState('');
+
+  async function confirmarQuitar() {
+    if (!quitando) return;
+    setEnviandoQuitar(true);
+    setErrorQuitar('');
     try {
-      await api.del(`/subjects/${subjectId}/instances/${blockKey}/${instance}`);
+      await api.del(`/subjects/${subjectId}/instances/${quitando.blockKey}/${quitando.instance}`);
       onRecargar?.();
+      setQuitando(null);
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : 'No se pudo quitar');
+      setErrorQuitar(err instanceof Error ? err.message : 'No se pudo quitar');
+    } finally {
+      setEnviandoQuitar(false);
     }
   }
 
   async function restaurarInstancia(blockKey: string, instance: number) {
+    setErrorAccion('');
     try {
       await api.post(`/subjects/${subjectId}/instances/${blockKey}/${instance}/restaurar`, {});
       onRecargar?.();
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : 'No se pudo restaurar');
+      setErrorAccion(err instanceof Error ? err.message : 'No se pudo restaurar');
     }
   }
 
@@ -207,22 +233,28 @@ export function ModalApartado({
     elegir(item.clave);
   }
 
-  async function bloquearApartado(blockKey: string) {
-    if (!window.confirm('¿Bloquear este apartado completo para esta asignatura? Se pierde todo su avance guardado.')) return;
+  async function confirmarBloquear() {
+    if (!confirmandoBloquear) return;
+    setEnviandoBloquear(true);
+    setErrorBloquear('');
     try {
-      await api.post(`/subjects/${subjectId}/blocks/${blockKey}/bloquear`, {});
+      await api.post(`/subjects/${subjectId}/blocks/${confirmandoBloquear}/bloquear`, {});
       onRecargar?.();
+      setConfirmandoBloquear(null);
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : 'No se pudo bloquear');
+      setErrorBloquear(err instanceof Error ? err.message : 'No se pudo bloquear');
+    } finally {
+      setEnviandoBloquear(false);
     }
   }
 
   async function desbloquearApartado(blockKey: string) {
+    setErrorAccion('');
     try {
       await api.post(`/subjects/${subjectId}/blocks/${blockKey}/desbloquear`, {});
       onRecargar?.();
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : 'No se pudo desbloquear');
+      setErrorAccion(err instanceof Error ? err.message : 'No se pudo desbloquear');
     }
   }
 
@@ -262,6 +294,7 @@ export function ModalApartado({
           </button>
         ) : null}
       >
+        <Alerta>{errorAccion}</Alerta>
         {cargando ? (
           <p className="text-sm text-slate-400 dark:text-slate-500 py-6 text-center">Cargando…</p>
         ) : vista === 'todos' ? (
@@ -277,7 +310,7 @@ export function ModalApartado({
                   celdas={celdas}
                   activo={clave === apartado}
                   onClick={() => elegir(clave)}
-                  onEliminar={esInstancia ? () => quitarInstancia(p0.blockKey, p0.instance!, g.titulo) : undefined}
+                  onEliminar={esInstancia ? () => setQuitando({ blockKey: p0.blockKey, instance: p0.instance!, etiqueta: g.titulo }) : undefined}
                 />
               );
             })}
@@ -312,7 +345,7 @@ export function ModalApartado({
                       celdas={celdas}
                       activo={clave === apartado}
                       onClick={() => elegir(clave)}
-                      onEliminar={esInstancia ? () => quitarInstancia(p0.blockKey, p0.instance!, g.titulo) : undefined}
+                      onEliminar={esInstancia ? () => setQuitando({ blockKey: p0.blockKey, instance: p0.instance!, etiqueta: g.titulo }) : undefined}
                     />
                   );
                 })}
@@ -323,7 +356,7 @@ export function ModalApartado({
               {totalGarantizadasDelBloque > 0 && (
                 <button
                   type="button"
-                  onClick={() => bloquearApartado(bloqueInicial!)}
+                  onClick={() => setConfirmandoBloquear(bloqueInicial!)}
                   className="mt-3 text-[11.5px] text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400
                              underline underline-offset-2"
                 >
@@ -339,6 +372,7 @@ export function ModalApartado({
             paso={pasoActivo}
             celda={celdas[pasoActivo.path]}
             teachers={teachers}
+            videoPorDocente={videoPorDocente}
             bookDueDate={bookDueDate}
             onGuardado={onGuardado}
             onTeachersChanged={onTeachersChanged}
@@ -372,6 +406,40 @@ export function ModalApartado({
           </div>
         )}
       </Modal>
+
+      <ModalConfirmar
+        abierto={confirmandoSalir}
+        titulo="Salir sin guardar"
+        mensaje="Hay cambios sin guardar en este paso. ¿Salir sin guardar?"
+        textoConfirmar="Sí, salir"
+        variante="peligro"
+        onCancelar={() => setConfirmandoSalir(false)}
+        onConfirmar={confirmarSalirSinGuardar}
+      />
+
+      <ModalConfirmar
+        abierto={!!quitando}
+        titulo="Quitar instancia"
+        mensaje={<>¿Quitar <strong>{quitando?.etiqueta}</strong>? Se pierde todo su avance guardado.</>}
+        textoConfirmar="Sí, quitar"
+        variante="peligro"
+        enviando={enviandoQuitar}
+        error={errorQuitar}
+        onCancelar={() => setQuitando(null)}
+        onConfirmar={confirmarQuitar}
+      />
+
+      <ModalConfirmar
+        abierto={!!confirmandoBloquear}
+        titulo="Bloquear apartado"
+        mensaje="¿Bloquear este apartado completo para esta asignatura? Se pierde todo su avance guardado."
+        textoConfirmar="Sí, bloquear"
+        variante="peligro"
+        enviando={enviandoBloquear}
+        error={errorBloquear}
+        onCancelar={() => setConfirmandoBloquear(null)}
+        onConfirmar={confirmarBloquear}
+      />
     </>
   );
 }

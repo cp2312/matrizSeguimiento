@@ -6,8 +6,8 @@ import { BotonConfirmar } from './ui/BotonConfirmar';
 import { Alerta } from './ui/Alerta';
 import { ESTADOS, ORDEN_ESTADOS } from '../lib/estados';
 import { etiquetaPaso } from '../lib/bloques';
-import { sumarDiasHabiles } from '@shared/businessDays';
-import { parseStepPath, esPasoPropagable, PIPELINE_TEMPLATE } from '@shared/pipelineTemplate';
+import { sumarDiasHabiles, hoyISO } from '@shared/businessDays';
+import { parseStepPath, esPasoPropagable, pasoPideFechaLimite, PIPELINE_TEMPLATE } from '@shared/pipelineTemplate';
 import { CATEGORIAS_ENCARGADO, CATEGORIAS_SIN_FECHA_EN_PASO } from '@shared/types';
 import type { CategoriaEncargado, CellStatus, MatrixCell, ResolvedStep, SubjectCategoryOwner, SubjectTeacher } from '@shared/types';
 
@@ -22,6 +22,9 @@ interface Props {
   paso: ResolvedStep;
   celda?: MatrixCell;
   teachers: SubjectTeacher[];
+  /** los videos de esta asignatura los graba el profesor -- de eso depende si
+   *  "Creación de guión" de Video de contenido pide fecha límite (ver pasoPideFechaLimite) */
+  videoPorDocente: boolean;
   /** fecha tentativa de entrega del libro (una sola por asignatura, no por docente) */
   bookDueDate: string | null;
   onGuardado: (celda: MatrixCell) => void;
@@ -32,15 +35,6 @@ interface Props {
   /** avisa hacia afuera si el formulario tiene cambios sin guardar (para
    *  preguntar antes de cerrar el modal y perderlos) */
   onDirtyChange?: (dirty: boolean) => void;
-}
-
-/** Fecha de hoy local ('YYYY-MM-DD'). No usar toISOString: en zonas al oeste
- *  de UTC, al anochecer ya devuelve la fecha del día siguiente. */
-function hoyLocal(): string {
-  const hoy = new Date();
-  const mes = String(hoy.getMonth() + 1).padStart(2, '0');
-  const dia = String(hoy.getDate()).padStart(2, '0');
-  return `${hoy.getFullYear()}-${mes}-${dia}`;
 }
 
 type EdicionContrato = { start_date: string; end_date: string; contract_type: string };
@@ -61,7 +55,7 @@ type FormCelda = {
 function formInicialDe(celda: MatrixCell | undefined): FormCelda {
   return {
     status: (celda?.status ?? 'vacio') as CellStatus,
-    doneDate: celda?.done_date ?? hoyLocal(),
+    doneDate: celda?.done_date ?? hoyISO(),
     comment: celda?.comment ?? '',
     secondComment: celda?.second_comment ?? '',
     branchValue: celda?.branch_value ?? null,
@@ -229,8 +223,18 @@ function FechaEntregaLibro({ subjectId, bookDueDate, onCambiada }: {
   onCambiada: (bookDueDate: string | null) => void;
 }) {
   const [edicion, setEdicion] = useState<string | null>(null);
+  const [error, setError] = useState('');
   const valorActual = edicion ?? (bookDueDate ?? '');
   const hayCambios = edicion !== null && edicion !== (bookDueDate ?? '');
+
+  function validar(): boolean {
+    setError('');
+    if (valorActual && valorActual < hoyISO()) {
+      setError('La fecha tentativa no puede ser anterior a hoy');
+      return false;
+    }
+    return true;
+  }
 
   async function guardar() {
     const nuevaFecha = valorActual || null;
@@ -250,7 +254,8 @@ function FechaEntregaLibro({ subjectId, bookDueDate, onCambiada }: {
         <input
           type="date"
           value={valorActual}
-          onChange={(e) => setEdicion(e.target.value)}
+          min={hoyISO()}
+          onChange={(e) => { setEdicion(e.target.value); setError(''); }}
           className={CAMPO_INPUT}
         />
         <span className="block text-[10px] text-slate-400 dark:text-slate-500 mt-1.5 leading-relaxed">
@@ -259,11 +264,13 @@ function FechaEntregaLibro({ subjectId, bookDueDate, onCambiada }: {
         </span>
       </label>
 
+      <Alerta>{error}</Alerta>
+
       {hayCambios && (
         <div className="flex items-center justify-end gap-2 pt-2.5 mt-2.5 border-t border-slate-100 dark:border-slate-800">
           <button
             type="button"
-            onClick={() => setEdicion(null)}
+            onClick={() => { setEdicion(null); setError(''); }}
             className="text-[11px] text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100"
           >
             Deshacer
@@ -273,6 +280,7 @@ function FechaEntregaLibro({ subjectId, bookDueDate, onCambiada }: {
             etiquetaConfirmar="Sí, guardar"
             titulo="Confirmar fecha de entrega"
             mensaje="¿Guardar esta fecha tentativa de entrega del libro?"
+            onValidar={validar}
             onConfirmar={guardar}
             className="h-7 px-2.5 text-[11px]"
           />
@@ -348,21 +356,14 @@ function EncargadoAsignatura({ subjectId, category, label }: {
 }
 
 export function PanelCelda({
-  subjectId, paso, celda, teachers, bookDueDate,
+  subjectId, paso, celda, teachers, videoPorDocente, bookDueDate,
   onGuardado, onTeachersChanged, onBookDueDateChanged, onCerrar, onRecargar, onDirtyChange,
 }: Props) {
   const { step, path } = paso;
   const esTipoContrato = path === 'contrato.tipo_contrato';
 
-  // El selector de encargado propio de esta asignatura solo tiene sentido
-  // mostrarlo donde de verdad se manda un correo por esa categoría: en el
-  // paso puntual con fecha límite (ovas/podcast/video_contenido/guias/libro),
-  // o en "Tipo de contrato" (avisa por la fecha de fin de contrato, no por
-  // una fecha límite propia -- ver CATEGORIAS_SIN_FECHA_EN_PASO). El resto de
-  // los pasos (p. ej. "ISBN"/"Corrección de estilo" en Libro, o cualquier
-  // paso de "Cuestionario final", que no tiene ninguno con fecha límite)
-  // nunca disparan un aviso por esa categoría, así que ahí no se muestra.
   const { blockKey } = parseStepPath(path);
+  const pideFechaLimite = pasoPideFechaLimite(step, videoPorDocente);
 
   // Pasos de los "de siempre igual" en un bloque repetible (OVA, Podcast,
   // Video de contenido, Guía, Infografía): al marcarlo como terminado, el
@@ -372,15 +373,24 @@ export function PanelCelda({
   const bloqueDelPaso = PIPELINE_TEMPLATE.find((b) => b.key === blockKey);
   const propagable = bloqueDelPaso ? esPasoPropagable(bloqueDelPaso, step) : false;
 
-  const tieneCategoria = blockKey in CATEGORIAS_ENCARGADO && blockKey !== 'jefe';
-  const avisaPorEstePaso = tieneCategoria
-    && (!!step.hasDueDate || !!step.autoDueDate || CATEGORIAS_SIN_FECHA_EN_PASO.includes(blockKey as CategoriaEncargado));
-  const categoriaEncargado = avisaPorEstePaso ? (blockKey as CategoriaEncargado) : null;
-
   // El formulario se remonta entero (key={path} en ModalApartado) cuando cambia
   // el paso, así que el estado arranca fresco en cada paso sin reset manual.
   const [form, setForm] = useState<FormCelda>(() => formInicialDe(celda));
   const [error, setError] = useState('');
+
+  // El selector de encargado propio de esta asignatura solo tiene sentido
+  // mostrarlo donde de verdad se manda un correo por esa categoría: en el
+  // paso puntual con fecha límite (podcast/video_contenido/cuestionario_final/libro),
+  // en "Tipo de contrato" (avisa por la fecha de fin de contrato, no por una
+  // fecha límite propia -- ver CATEGORIAS_SIN_FECHA_EN_PASO), o en cualquier
+  // paso que esté "En proceso" -- quien lo puso así no es necesariamente quien
+  // le va a hacer seguimiento, así que ahí también conviene poder anotar
+  // quién quedó a cargo.
+  const tieneCategoria = blockKey in CATEGORIAS_ENCARGADO && blockKey !== 'jefe';
+  const avisaPorEstePaso = tieneCategoria
+    && (pideFechaLimite || !!step.autoDueDate || CATEGORIAS_SIN_FECHA_EN_PASO.includes(blockKey as CategoriaEncargado)
+        || form.status === 'pendiente_equipo');
+  const categoriaEncargado = avisaPorEstePaso ? (blockKey as CategoriaEncargado) : null;
   // Foto de los valores con los que arrancó el formulario -- si el usuario
   // no toca nada, no hay nada que perder al cerrar.
   const inicialRef = useRef<FormCelda>(form);
@@ -401,6 +411,14 @@ export function PanelCelda({
    *  en vez de hacer confirmar algo que de todas formas va a fallar. */
   function validar(): boolean {
     setError('');
+
+    // La fecha límite se escribe a mano solo cuando NO es autoDueDate (esa se
+    // calcula sola a partir de referenceDate, que sí puede quedar en el
+    // pasado -- p. ej. "enviado al experto el..." registrado después).
+    if (pideFechaLimite && !step.autoDueDate && form.dueDate && form.dueDate < hoyISO()) {
+      setError(`${step.dueDateLabel ?? 'La fecha límite'} no puede ser anterior a hoy`);
+      return false;
+    }
 
     if (form.status === 'terminado') {
       if (!form.doneDate) { setError('Para marcar como terminado hace falta la fecha'); return false; }
@@ -431,7 +449,7 @@ export function PanelCelda({
           comment: form.comment.trim() || null,
           secondComment: form.secondComment.trim() || null,
           branchValue: step.isBranchPoint ? form.branchValue : null,
-          dueDate: step.hasDueDate ? form.dueDate || null : null,
+          dueDate: pideFechaLimite ? form.dueDate || null : null,
           referenceDate: step.autoDueDate ? form.referenceDate || null : null,
           version: celda?.version,
         }
@@ -450,8 +468,25 @@ export function PanelCelda({
     }
   }
 
+  // Enter en cualquier campo de texto/fecha dispara la misma acción que el
+  // botón "Guardar cambios" -- la primera vez abre la confirmación, y con la
+  // confirmación ya abierta, confirma (ese es siempre el último botón
+  // dentro de este contenedor: BotonConfirmar deja su propio botón montado
+  // y, encima, "Cancelar"/"Sí, guardar" del modal de confirmación una vez
+  // abierto). Los botones de Estado/Decisión ya reaccionan solos a Enter
+  // por ser <button>, así que ahí no hace falta tocar nada.
+  const pieRef = useRef<HTMLDivElement>(null);
+  function manejarEnterFormulario(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.key !== 'Enter') return;
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'TEXTAREA' || target.tagName === 'BUTTON') return;
+    e.preventDefault();
+    const botones = pieRef.current?.querySelectorAll('button');
+    if (botones?.length) botones[botones.length - 1].click();
+  }
+
   return (
-    <div className="max-w-lg mx-auto">
+    <div className="max-w-lg mx-auto" onKeyDown={manejarEnterFormulario}>
       {/* Encabezado */}
       <div className="flex items-start justify-between gap-3 pb-4 mb-5 border-b border-slate-100 dark:border-slate-800">
         <div className="min-w-0">
@@ -583,7 +618,7 @@ export function PanelCelda({
                 className={CAMPO_INPUT}
               />
             </label>
-          ) : step.hasDueDate && (
+          ) : pideFechaLimite && (
             <label className="block">
               <span className="mb-1 block text-[11px] font-medium text-slate-500 dark:text-slate-400">
                 {step.dueDateLabel ?? 'Fecha límite'}
@@ -591,6 +626,7 @@ export function PanelCelda({
               <input
                 type="date"
                 value={form.dueDate}
+                min={hoyISO()}
                 onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
                 className={CAMPO_INPUT}
               />
@@ -598,7 +634,7 @@ export function PanelCelda({
           )}
         </div>
 
-        {(step.autoDueDate || step.hasDueDate) && (
+        {(step.autoDueDate || pideFechaLimite) && (
           <p className="mt-2 text-[10px] leading-relaxed text-slate-400 dark:text-slate-500">
             {step.autoDueDate
               ? (form.referenceDate
@@ -671,16 +707,18 @@ export function PanelCelda({
           >
             Cancelar
           </button>
-          <BotonConfirmar
-            variante="primario"
-            etiqueta="Guardar cambios"
-            etiquetaConfirmar="Sí, guardar"
-            titulo="Confirmar guardado"
-            mensaje="¿Confirmás guardar estos cambios?"
-            onValidar={validar}
-            onConfirmar={guardar}
-            className="h-9 px-4 text-[12px]"
-          />
+          <div ref={pieRef}>
+            <BotonConfirmar
+              variante="primario"
+              etiqueta="Guardar cambios"
+              etiquetaConfirmar="Sí, guardar"
+              titulo="Confirmar guardado"
+              mensaje="¿Confirmás guardar estos cambios?"
+              onValidar={validar}
+              onConfirmar={guardar}
+              className="h-9 px-4 text-[12px]"
+            />
+          </div>
         </div>
       </div>
     </div>

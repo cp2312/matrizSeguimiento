@@ -3,8 +3,9 @@ import { Encabezado } from './ui/Encabezado';
 import { Avatar } from './ui/Avatar';
 import { useAuth } from '../context/useAuth';
 import { useTema } from '../context/useTema';
-import { useFetch } from '../hooks/useFetch';
-import type { AppSettings } from '@shared/types';
+
+
+const URL_MATRIZ_EXCEL = 'https://campusvirtual.santototunja.edu.co/';
 
 interface Props {
   children: React.ReactNode;
@@ -80,6 +81,7 @@ export function Layout({ children, ancho = 'normal' }: Props) {
       >
         <nav className="inline-flex items-center gap-1">
           <EnlaceNav a="/" activo={pathname === '/'}>Programas</EnlaceNav>
+          <EnlaceNav a="/dashboard" activo={pathname.startsWith('/dashboard')}>Dashboard</EnlaceNav>
           {usuario?.role === 'administrador' && (
             <>
               <EnlaceNav a="/usuarios" activo={pathname.startsWith('/usuarios')}>
@@ -118,17 +120,11 @@ function Accion({ onClick, titulo, children }: { onClick: () => void; titulo: st
 /**
  * Acceso rápido, visible para todos los usuarios (no solo administradores),
  * al Excel externo de la matriz de seguimiento que se venía manejando antes.
- * El link se configura desde Usuarios -- solo un administrador puede
- * editarlo (ver LinkMatrizExcel) -- pero cualquiera puede usarlo una vez
- * cargado; si nadie lo cargó todavía, no se muestra.
  */
 function EnlaceMatrizExcel() {
-  const { datos } = useFetch<AppSettings>('/settings');
-  if (!datos?.matrizExcelUrl) return null;
-
   return (
     <a
-      href={datos.matrizExcelUrl}
+      href={URL_MATRIZ_EXCEL}
       target="_blank"
       rel="noopener noreferrer"
       title="Abrir la matriz de seguimiento antigua (Excel)"

@@ -7,9 +7,10 @@ import { revisarSiSeCompleto } from '../lib/completionEmail.js';
 import { cargarQuitadas, cargarQuitadasPorPrograma } from '../lib/removedInstances.js';
 import {
   buildStepPaths, isValidStepPath, findStepDef, totalSteps, pasosVisibles, parseStepPath, etiquetaPaso,
-  pasosAplicables, pasoQueFalta, computeRepeatCount, bloqueCompletamenteQuitado, esPasoPropagable, PIPELINE_TEMPLATE,
+  pasosAplicables, pasoQueFalta, computeRepeatCount, bloqueCompletamenteQuitado, esPasoPropagable,
+  pasoPideFechaLimite, PIPELINE_TEMPLATE,
 } from '../../../shared/pipelineTemplate.js';
-import { sumarDiasHabiles } from '../../../shared/businessDays.js';
+import { sumarDiasHabiles, hoyISO } from '../../../shared/businessDays.js';
 import type { BlockDef, MatrixCell, StepDef, Subject, SubjectTeacher } from '../../../shared/types.js';
 
 /**
@@ -234,6 +235,15 @@ router.patch('/subjects/:subjectId/matrix/*stepPath', async (req, res) => {
       return res.status(400).json({ error: `"${def.step.label}" no es un paso de decisión` });
     }
 
+    // La fecha límite se escribe a mano solo cuando NO es autoDueDate (esa se
+    // calcula sola a partir de referenceDate, que sí puede quedar en el
+    // pasado -- p. ej. "enviado al experto el..." registrado después).
+    if (!def.step.autoDueDate && pasoPideFechaLimite(def.step, asignatura.videos_por_docente) && dueDate && dueDate < hoyISO()) {
+      return res.status(400).json({
+        error: `${def.step.dueDateLabel ?? 'La fecha límite'} no puede ser anterior a hoy`,
+      });
+    }
+
     // No se puede avanzar un paso (sacarlo de "vacío") si el paso anterior de su
     // mismo apartado todavía no está terminado -- pero sí se puede vaciarlo de
     // vuelta en cualquier momento, para poder deshacer.
@@ -310,7 +320,9 @@ router.patch('/subjects/:subjectId/matrix/*stepPath', async (req, res) => {
           doneDate ?? null, usuario.initials,
           comment ?? null, secondComment ?? null,
           def.step.isBranchPoint ? branchValue ?? null : null,
-          def.step.autoDueDate ? fechaLimiteCalculada : (def.step.hasDueDate ? dueDate ?? null : null),
+          def.step.autoDueDate
+            ? fechaLimiteCalculada
+            : (pasoPideFechaLimite(def.step, asignatura.videos_por_docente) ? dueDate ?? null : null),
           def.step.autoDueDate ? referenceDate ?? null : null,
           usuario.id,
         ]

@@ -10,7 +10,7 @@ import { Modal } from '../components/ui/Modal';
 import { Alerta } from '../components/ui/Alerta';
 import { Cargando } from '../components/ui/Estado';
 import { TituloPagina } from '../components/ui/TituloPagina';
-import type { AppSettings, CategoryOwner } from '@shared/types';
+import type { CategoryOwner } from '@shared/types';
 
 interface UsuarioFila {
   id: number;
@@ -92,8 +92,6 @@ export default function Usuarios() {
 
       {usuarios && <EncargadosPorCategoria usuarios={usuarios} />}
 
-      <LinkMatrizExcel />
-
       <ModalUsuario
         abierto={creando}
         onCerrar={() => setCreando(false)}
@@ -158,69 +156,6 @@ function EncargadosPorCategoria({ usuarios }: { usuarios: UsuarioFila[] }) {
             onChange={(ev) => cambiar(e.category, ev.target.value)}
           />
         ))}
-      </div>
-    </div>
-  );
-}
-
-/** Link externo a la matriz de seguimiento en Excel que se manejaba antes, para entrar rápido desde acá */
-function LinkMatrizExcel() {
-  const { datos, error, recargar } = useFetch<AppSettings>('/settings');
-  const [valor, setValor] = useState('');
-  const [idCargado, setIdCargado] = useState(false);
-  const [guardando, setGuardando] = useState(false);
-  const [errorGuardar, setErrorGuardar] = useState('');
-  const [exito, setExito] = useState(false);
-
-  if (datos && !idCargado) {
-    setIdCargado(true);
-    setValor(datos.matrizExcelUrl ?? '');
-  }
-
-  async function guardar(e: React.FormEvent) {
-    e.preventDefault();
-    setGuardando(true);
-    setErrorGuardar('');
-    setExito(false);
-    try {
-      await api.put('/settings', { matrizExcelUrl: valor });
-      setExito(true);
-      recargar();
-    } catch (err) {
-      setErrorGuardar(err instanceof Error ? err.message : 'Ocurrió un error');
-    } finally {
-      setGuardando(false);
-    }
-  }
-
-  return (
-    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 mt-5">
-      <p className="text-sm font-medium text-slate-800 dark:text-slate-100">Matriz de seguimiento en Excel</p>
-      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 mb-3">
-        Link a la matriz que se manejaba antes de esta app (SharePoint, Drive, etc.). Una vez
-        guardado, queda disponible como acceso rápido en la barra superior.
-      </p>
-
-      {error && <Alerta>{error}</Alerta>}
-
-      <form onSubmit={guardar} className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
-        <div className="w-full sm:flex-1">
-          <Campo
-            etiqueta="URL"
-            type="url"
-            placeholder="https://…"
-            value={valor}
-            onChange={(e) => { setValor(e.target.value); setExito(false); }}
-          />
-        </div>
-        <Boton type="submit" variante="primario" disabled={guardando}>
-          {guardando ? 'Guardando…' : 'Guardar'}
-        </Boton>
-      </form>
-
-      <div className="mt-2">
-        <Alerta>{errorGuardar}</Alerta>
-        {exito && <Alerta tipo="info" centrado={false}>Link actualizado</Alerta>}
       </div>
     </div>
   );

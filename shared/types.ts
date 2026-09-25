@@ -54,6 +54,15 @@ export interface StepDef {
   hasDueDate?: boolean;
   dueDateLabel?: string;
   /**
+   * Igual que `hasDueDate`, pero solo cuenta cuando la asignatura tiene
+   * `videos_por_docente: true` (el profesor graba el video, no el equipo --
+   * ahí sí hace falta una fecha límite dura para saber cuándo lo entrega).
+   * Hoy solo lo usa "Creación de guión" de Video de contenido. Ver
+   * pasoPideFechaLimite, la única función que debe leer este campo (en vez
+   * de leer `hasDueDate` directo, que se queda corto para este paso).
+   */
+  dueDateSoloVideoTutorial?: boolean;
+  /**
    * Fecha límite CALCULADA SOLA en vez de escrita a mano: el usuario solo
    * indica una fecha inicial (p. ej. "enviado al experto el...") y el
    * backend le suma `businessDays` días hábiles para obtener la fecha límite
@@ -280,6 +289,52 @@ export const CATEGORIAS_ENCARGADO: Record<CategoriaEncargado, string> = {
 export interface AppSettings {
   /** Link externo a la matriz de seguimiento en Excel que se manejaba antes; null si nadie lo cargó */
   matrizExcelUrl: string | null;
+}
+
+/** Resumen de avance de un solo apartado o programa (ver DashboardResumen) */
+export interface AvanceResumen {
+  terminados: number;
+  total: number;
+  porcentaje: number;
+}
+
+/** Respuesta de GET /dashboard -- métricas y porcentajes de avance de toda la
+ *  app (todos los programas activos a la vez), para la pantalla de Dashboard. */
+export interface DashboardResumen {
+  generadoEn: string;
+  programas: { total: number; porTipo: Record<ProgramType, number> };
+  asignaturas: { total: number };
+  docentes: { total: number };
+  /** apartados de instancias garantizadas que el equipo bloqueó a mano (ver subject_removed_instances) */
+  bloqueados: number;
+  avanceGlobal: AvanceResumen;
+  /** cuántos pasos (de los que aplican) están en cada estado, sumando todas las asignaturas */
+  porEstado: Record<CellStatus, number>;
+  /** avance por apartado del proceso (OVA, Libro, Guía...), ordenado de menor a mayor avance */
+  porApartado: (AvanceResumen & { blockKey: string; label: string })[];
+  /** avance por programa, ordenado de menor a mayor avance */
+  porPrograma: (AvanceResumen & { id: number; name: string; type: ProgramType; asignaturas: number })[];
+  /** las 10 asignaturas con menor avance de toda la app, ordenadas de menor a mayor */
+  asignaturasMasAtrasadas: (AvanceResumen & { id: number; name: string; programId: number; programName: string })[];
+  /** pasos que pasaron a "terminado" por semana, últimas 8 semanas (lunes de cada semana, 'YYYY-MM-DD') */
+  tendenciaSemanal: { semana: string; terminados: number }[];
+  /** fechas límite, contratos y entregas de libro por vencer o ya vencidos, ordenadas por urgencia */
+  alertas: AlertaResumen[];
+}
+
+/** Una fecha límite, un contrato de docente o una entrega de libro por vencer
+ *  o ya vencido (ver cargarAlertas en backend/src/routes/dashboard.ts) */
+export interface AlertaResumen {
+  tipo: 'fecha_limite' | 'contrato' | 'libro';
+  etiqueta: string;
+  asignatura: string;
+  programa: string;
+  subjectId: number;
+  /** step_path sin el último tramo, para armar el link directo (?apartado=...) */
+  apartado: string;
+  fecha: string;
+  /** negativo = ya venció */
+  diasRestantes: number;
 }
 
 // ---- Eventos de Socket.IO ----
