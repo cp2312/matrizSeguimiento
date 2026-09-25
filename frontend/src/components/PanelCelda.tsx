@@ -47,6 +47,9 @@ type FormCelda = {
   branchValue: boolean | null;
   dueDate: string;
   referenceDate: string;
+  /** nota libre de quién quedó a cargo mientras el paso está "En proceso" --
+   *  sin relación con el encargado por categoría ni con avisos por correo. */
+  assignedNote: string;
 };
 
 /** El formulario arranca con los valores ya guardados de la celda (o los
@@ -61,6 +64,7 @@ function formInicialDe(celda: MatrixCell | undefined): FormCelda {
     branchValue: celda?.branch_value ?? null,
     dueDate: celda?.due_date ?? '',
     referenceDate: celda?.reference_date ?? '',
+    assignedNote: celda?.assigned_note ?? '',
   };
 }
 
@@ -381,15 +385,13 @@ export function PanelCelda({
   // El selector de encargado propio de esta asignatura solo tiene sentido
   // mostrarlo donde de verdad se manda un correo por esa categoría: en el
   // paso puntual con fecha límite (podcast/video_contenido/cuestionario_final/libro),
-  // en "Tipo de contrato" (avisa por la fecha de fin de contrato, no por una
-  // fecha límite propia -- ver CATEGORIAS_SIN_FECHA_EN_PASO), o en cualquier
-  // paso que esté "En proceso" -- quien lo puso así no es necesariamente quien
-  // le va a hacer seguimiento, así que ahí también conviene poder anotar
-  // quién quedó a cargo.
+  // o en "Tipo de contrato" (avisa por la fecha de fin de contrato, no por
+  // una fecha límite propia -- ver CATEGORIAS_SIN_FECHA_EN_PASO). "En
+  // proceso" tiene su propia nota libre más abajo (ver NotaEncargado), sin
+  // relación con este selector ni con avisos por correo.
   const tieneCategoria = blockKey in CATEGORIAS_ENCARGADO && blockKey !== 'jefe';
   const avisaPorEstePaso = tieneCategoria
-    && (pideFechaLimite || !!step.autoDueDate || CATEGORIAS_SIN_FECHA_EN_PASO.includes(blockKey as CategoriaEncargado)
-        || form.status === 'pendiente_equipo');
+    && (pideFechaLimite || !!step.autoDueDate || CATEGORIAS_SIN_FECHA_EN_PASO.includes(blockKey as CategoriaEncargado));
   const categoriaEncargado = avisaPorEstePaso ? (blockKey as CategoriaEncargado) : null;
   // Foto de los valores con los que arrancó el formulario -- si el usuario
   // no toca nada, no hay nada que perder al cerrar.
@@ -401,7 +403,7 @@ export function PanelCelda({
     const esDirty = form.status !== i.status || form.doneDate !== i.doneDate
       || form.comment !== i.comment || form.secondComment !== i.secondComment
       || form.branchValue !== i.branchValue || form.dueDate !== i.dueDate
-      || form.referenceDate !== i.referenceDate;
+      || form.referenceDate !== i.referenceDate || form.assignedNote !== i.assignedNote;
     setDirty(esDirty);
   }, [form]);
 
@@ -451,6 +453,7 @@ export function PanelCelda({
           branchValue: step.isBranchPoint ? form.branchValue : null,
           dueDate: pideFechaLimite ? form.dueDate || null : null,
           referenceDate: step.autoDueDate ? form.referenceDate || null : null,
+          assignedNote: form.status === 'pendiente_equipo' ? form.assignedNote.trim() || null : null,
           version: celda?.version,
         }
       );
@@ -566,6 +569,23 @@ export function PanelCelda({
           </p>
         )}
       </section>
+
+      {/* Encargado de este paso -- nota libre, nada que ver con el selector
+          de encargado por categoría de arriba ni con avisos por correo. */}
+      {form.status === 'pendiente_equipo' && (
+        <section className="mb-5">
+          <h3 className={ETIQUETA_SECCION}>Encargado de este paso</h3>
+          <input
+            value={form.assignedNote}
+            onChange={(e) => setForm({ ...form, assignedNote: e.target.value })}
+            placeholder="¿Quién quedó a cargo?"
+            className={CAMPO_INPUT}
+          />
+          <p className="mt-1.5 text-[10px] leading-relaxed text-slate-400 dark:text-slate-500">
+            Nota libre, solo para dejar registro -- no envía avisos por correo.
+          </p>
+        </section>
+      )}
 
       {/* Decisión del paso */}
       {step.isBranchPoint && (

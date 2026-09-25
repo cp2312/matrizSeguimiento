@@ -194,6 +194,10 @@ export interface MatrixCell {
   due_date_warning_sent_at: string | null;
   /** fecha inicial de la que sale due_date, solo cuando StepDef.autoDueDate */
   reference_date: string | null;
+  /** nota libre de quién quedó a cargo mientras el paso está "En proceso" --
+   *  no tiene relación con el encargado por categoría (CategoryOwner) ni
+   *  dispara avisos por correo, es solo un registro visible en el panel. */
+  assigned_note: string | null;
   version: number;
   updated_at: string;
   updated_by: number | null;

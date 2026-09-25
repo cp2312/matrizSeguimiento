@@ -317,6 +317,12 @@ CREATE TABLE matrix_cells (
   -- solo (sumando días hábiles) -- ver shared/businessDays.ts.
   reference_date DATE,
 
+  -- Nota libre de quién quedó a cargo mientras el paso está "En proceso" --
+  -- sin relación con category_owners/subject_category_owners (el encargado
+  -- por categoría, que sí dispara avisos por correo). Solo un registro
+  -- visible en el panel del paso.
+  assigned_note TEXT,
+
   -- Optimistic locking: cada guardado incrementa version y el backend rechaza
   -- los saves cuya version enviada no coincida con la actual (ver matrix.ts).
   version    INTEGER NOT NULL DEFAULT 1,

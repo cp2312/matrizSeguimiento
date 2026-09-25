@@ -206,7 +206,7 @@ router.patch('/subjects/:subjectId/matrix/*stepPath', async (req, res) => {
     }
 
     const def = findStepDef(stepPath)!;
-    const { status, doneDate, comment, secondComment, branchValue, dueDate, referenceDate, version } = req.body;
+    const { status, doneDate, comment, secondComment, branchValue, dueDate, referenceDate, assignedNote, version } = req.body;
 
     // Pasos con StepDef.autoDueDate (p. ej. "Envío para ajustes de experto"):
     // la fecha límite no la escribe el cliente, sale sola de referenceDate +
@@ -293,8 +293,8 @@ router.patch('/subjects/:subjectId/matrix/*stepPath', async (req, res) => {
     try {
       const celda = await queryOne<MatrixCell>(
         `INSERT INTO matrix_cells
-           (subject_id, step_path, status, done_date, initials, comment, second_comment, branch_value, due_date, reference_date, updated_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+           (subject_id, step_path, status, done_date, initials, comment, second_comment, branch_value, due_date, reference_date, assigned_note, updated_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
          ON CONFLICT (subject_id, step_path)
          DO UPDATE SET
            status         = EXCLUDED.status,
@@ -305,6 +305,7 @@ router.patch('/subjects/:subjectId/matrix/*stepPath', async (req, res) => {
            branch_value   = EXCLUDED.branch_value,
            due_date       = EXCLUDED.due_date,
            reference_date = EXCLUDED.reference_date,
+           assigned_note  = EXCLUDED.assigned_note,
            -- Si la fecha límite cambió, se rehabilita el aviso de "por
            -- vencer" para la nueva fecha (si no, correrla hacia adelante
            -- nunca volvería a avisar). Aplica igual si cambió porque
@@ -324,6 +325,7 @@ router.patch('/subjects/:subjectId/matrix/*stepPath', async (req, res) => {
             ? fechaLimiteCalculada
             : (pasoPideFechaLimite(def.step, asignatura.videos_por_docente) ? dueDate ?? null : null),
           def.step.autoDueDate ? referenceDate ?? null : null,
+          status === 'pendiente_equipo' ? assignedNote ?? null : null,
           usuario.id,
         ]
       );

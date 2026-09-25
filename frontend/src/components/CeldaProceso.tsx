@@ -81,6 +81,11 @@ export function CeldaProceso({ paso, etiqueta, celda, seleccionada, onClick, blo
       <span className="block text-[10px] mt-1" style={{ color: e.textoSuave }}>
         {pie}
       </span>
+      {celda?.assigned_note && (
+        <span className="block text-[10px] mt-0.5 truncate" style={{ color: e.textoSuave }}>
+          👤 {celda.assigned_note}
+        </span>
+      )}
       {celda?.comment && (
         <span className="block text-[10px] mt-0.5 truncate" style={{ color: e.textoSuave }}>
           {celda.comment}
