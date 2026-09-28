@@ -435,6 +435,7 @@ export function ModalApartado({
             )}
 
             <BloqueProceso
+              key={apartado}
               titulo={grupoActivo.titulo}
               pasos={grupoActivo.pasos}
               celdas={celdas}

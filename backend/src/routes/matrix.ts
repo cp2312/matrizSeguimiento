@@ -131,6 +131,57 @@ async function propagarATodasLasInstancias(
   }
 }
 
+/**
+ * Algunos pasos, al marcarse como terminado, completan solos a otros pasos
+ * del MISMO bloque e instancia (ver StepDef.autoCompletaJunto) -- p. ej. al
+ * terminar "Reunión inicial" de Estructura, se completan solos también
+ * "Revisión estructura por experto" y "Estructura final", porque en la
+ * práctica ya quedan resueltos en ese mismo momento. No pisa un paso que ya
+ * esté tocado a mano (distinto de 'vacío'). No lanza: si falla, no debe
+ * tumbar el guardado que sí se pidió.
+ */
+async function completarPasosJuntos(
+  io: SocketIOServer, subjectId: string, block: BlockDef, step: StepDef,
+  instance: number | null, celdaOrigen: MatrixCell
+): Promise<void> {
+  if (celdaOrigen.status !== 'terminado') return;
+  if (!step.autoCompletaJunto?.length) return;
+
+  try {
+    for (const siblingKey of step.autoCompletaJunto) {
+      if (!block.steps.some((s) => s.key === siblingKey)) continue;
+
+      const targetPath = instance !== null
+        ? `${block.key}.${instance}.${siblingKey}`
+        : `${block.key}.${siblingKey}`;
+
+      const actual = await queryOne<MatrixCell>(
+        'SELECT * FROM matrix_cells WHERE subject_id = $1 AND step_path = $2',
+        [subjectId, targetPath]
+      );
+      if (actual && actual.status !== 'vacio') continue; // no pisar lo que ya se tocó a mano
+
+      const completado = await queryOne<MatrixCell>(
+        `INSERT INTO matrix_cells (subject_id, step_path, status, done_date, initials, updated_by)
+         VALUES ($1,$2,'terminado',$3,$4,$5)
+         ON CONFLICT (subject_id, step_path)
+         DO UPDATE SET
+           status     = 'terminado',
+           done_date  = EXCLUDED.done_date,
+           initials   = EXCLUDED.initials,
+           version    = matrix_cells.version + 1,
+           updated_by = EXCLUDED.updated_by
+         RETURNING *`,
+        [subjectId, targetPath, celdaOrigen.done_date, celdaOrigen.initials, celdaOrigen.updated_by]
+      );
+
+      if (completado) io.to(`subject:${subjectId}`).emit('cell:updated', completado);
+    }
+  } catch (err) {
+    console.error('[matrix] Error completando pasos relacionados:', err);
+  }
+}
+
 export function buildMatrixRouter(io: SocketIOServer) {
   const router = Router();
 
@@ -325,7 +376,11 @@ router.patch('/subjects/:subjectId/matrix/*stepPath', async (req, res) => {
             ? fechaLimiteCalculada
             : (pasoPideFechaLimite(def.step, asignatura.videos_por_docente) ? dueDate ?? null : null),
           def.step.autoDueDate ? referenceDate ?? null : null,
-          status === 'pendiente_equipo' ? assignedNote ?? null : null,
+          // No se limpia si el estado deja de ser "En proceso" -- una vez
+          // escrita, la nota de quién quedó a cargo se conserva aunque el
+          // paso se termine después (ver PanelCelda.tsx). Siempre en
+          // mayúscula, sin importar cómo la haya escrito el cliente.
+          assignedNote ? String(assignedNote).trim().toUpperCase() || null : null,
           usuario.id,
         ]
       );
@@ -351,6 +406,7 @@ router.patch('/subjects/:subjectId/matrix/*stepPath', async (req, res) => {
           io, subjectId, asignatura.credits, def.block, def.step, instance, celda, quitadas
         );
       }
+      await completarPasosJuntos(io, subjectId, def.block, def.step, instance, celda);
       void revisarSiSeCompleto(celda.subject_id);
 
       res.json(celda);

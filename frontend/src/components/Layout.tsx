@@ -5,7 +5,7 @@ import { useAuth } from '../context/useAuth';
 import { useTema } from '../context/useTema';
 
 
-const URL_MATRIZ_EXCEL = 'https://campusvirtual.santototunja.edu.co/';
+const URL_MATRIZ_EXCEL = 'https://usantotomaseduco-my.sharepoint.com/:x:/r/personal/dinstruccional_campusvirtual_ustatunja_edu_co/_layouts/15/Doc.aspx?sourcedoc=%7B880F9AD2-7FAA-57C5-E3B8-2115CD69D96E%7D&file=14032022_Matriz_montaje_Dise%C3%B1oAvanzadoPavimentosI_EGVP.xlsx&action=default&mobileredirect=true&CT=1790628033154&OR=OWA-NT-Mail&CID=42c4851c-d7fd-43c7-2b7c-99e488f9253a&SI=NonSentItems&SLSync=F';
 
 interface Props {
   children: React.ReactNode;

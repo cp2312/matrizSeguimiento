@@ -56,7 +56,9 @@ export function CeldaProceso({ paso, etiqueta, celda, seleccionada, onClick, blo
       onClick={() => { if (!bloqueado) onClick(); }}
       title={tituloBloqueo}
       aria-disabled={bloqueado}
-      className={`min-w-[104px] shrink-0 p-2 rounded-lg text-left transition ${
+      className={`min-w-[104px] shrink-0 p-2 rounded-lg text-left transition
+                  focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2
+                  dark:focus-visible:ring-offset-slate-900 ${
         bloqueado
           ? 'cursor-not-allowed opacity-55 saturate-[0.4]'
           : 'cursor-pointer hover:shadow-md hover:brightness-95'

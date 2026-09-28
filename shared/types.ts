@@ -90,6 +90,16 @@ export interface StepDef {
    *  estado es 'terminado' -- para datos que solo tienen sentido al cerrar
    *  el paso (p. ej. el ISBN, que se asigna al recibirlo) */
   commentSoloSiTerminado?: boolean;
+  /**
+   * Al marcar ESTE paso como terminado, se completan solos también estos
+   * otros pasos (por su `key`) del MISMO bloque e instancia -- para cuando
+   * en la práctica se resuelven todos juntos en un mismo momento (p. ej.
+   * "Reunión inicial" de Estructura ya deja lista también la revisión del
+   * experto y la estructura final). No es recíproco -- completar uno de
+   * ellos no completa este paso de vuelta -- ni pisa uno que ya esté
+   * tocado a mano (ver completarPasosJuntos en matrix.ts).
+   */
+  autoCompletaJunto?: string[];
 }
 
 /** Definición de un bloque (sección) del proceso */

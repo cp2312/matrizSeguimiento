@@ -41,3 +41,24 @@ body {
 button:not(:disabled) {
   cursor: pointer;
 }
+
+/* Los controles nativos de <input type="date"> (el ícono de calendario, las
+   flechitas) se dibujan con el tema del sistema operativo, no con el CSS de
+   la app -- en modo oscuro, sin esto, el navegador los sigue pintando claros
+   y quedan como un cuadrito blanco pegado al borde del campo, encima del
+   fondo oscuro del input. color-scheme le avisa al navegador qué paleta usar
+   para ESOS controles nativos en particular. */
+input {
+  color-scheme: light;
+}
+.dark input {
+  color-scheme: dark;
+}
+
+/* El campo de fecha nativo necesita más aire a la derecha para su propio
+   ícono de calendario -- con el padding parejo de los demás campos (12px)
+   queda muy justo y, según el navegador/zoom, el texto "dd/mm/aaaa" termina
+   pegado o montado sobre el ícono, como si se saliera del recuadro. */
+input[type="date"] {
+  padding-right: 1.75rem;
+}

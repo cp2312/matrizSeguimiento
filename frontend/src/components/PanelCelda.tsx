@@ -169,8 +169,8 @@ function DocentesContrato({ subjectId, teachers, onCambiados, onCeldaActualizada
             </span>
             <p className="text-[12px] font-medium text-slate-800 dark:text-slate-100 truncate">{t.full_name}</p>
           </div>
-          <div className="flex gap-2">
-            <label className="flex-1 block">
+          <div className="space-y-2">
+            <label className="block">
               <span className="block text-[10px] text-slate-400 dark:text-slate-500 mb-1">Fecha inicio</span>
               <input
                 type="date"
@@ -179,7 +179,7 @@ function DocentesContrato({ subjectId, teachers, onCambiados, onCeldaActualizada
                 className={CAMPO_INPUT}
               />
             </label>
-            <label className="flex-1 block">
+            <label className="block">
               <span className="block text-[10px] text-slate-400 dark:text-slate-500 mb-1">Fecha fin</span>
               <input
                 type="date"
@@ -414,6 +414,13 @@ export function PanelCelda({
     estadoGrupoRef.current?.querySelector<HTMLButtonElement>('[data-activo="true"]')?.focus();
   }, []);
 
+  /** La fecha de terminado solo tiene sentido (y solo se puede editar) con
+   *  el estado en "Terminado" -- en cualquier otro estado se guarda sola con
+   *  la fecha de hoy, sin que se pueda tocar a mano. */
+  function elegirEstado(estado: CellStatus) {
+    setForm({ ...form, status: estado, doneDate: estado === 'terminado' ? form.doneDate : hoyISO() });
+  }
+
   /** Corre antes de pedir confirmación -- si algo falta, se avisa de una vez
    *  en vez de hacer confirmar algo que de todas formas va a fallar. */
   function validar(): boolean {
@@ -458,7 +465,9 @@ export function PanelCelda({
           branchValue: step.isBranchPoint ? form.branchValue : null,
           dueDate: pideFechaLimite ? form.dueDate || null : null,
           referenceDate: step.autoDueDate ? form.referenceDate || null : null,
-          assignedNote: form.status === 'pendiente_equipo' ? form.assignedNote.trim() || null : null,
+          // No se limpia si el estado deja de ser "En proceso" -- una vez
+          // escrita, se conserva aunque el paso se marque como terminado.
+          assignedNote: form.assignedNote.trim().toUpperCase() || null,
           version: celda?.version,
         }
       );
@@ -567,9 +576,11 @@ export function PanelCelda({
               return (
                 <button
                   key={estado}
-                  onClick={() => setForm({ ...form, status: estado })}
+                  onClick={() => elegirEstado(estado)}
                   data-activo={activo}
-                  className={`flex w-full items-center gap-2.5 rounded-lg border px-3 text-left text-[12px] transition-colors ${
+                  className={`flex w-full items-center gap-2.5 rounded-lg border px-3 text-left text-[12px] transition-colors
+                              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500
+                              focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-900 ${
                     activo
                       ? 'h-9 border-cyan-600 bg-cyan-50/70 font-medium text-slate-900 dark:border-cyan-500 dark:bg-cyan-500/10 dark:text-slate-100'
                       : 'h-9 border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-300 dark:hover:bg-slate-800/40'
@@ -605,7 +616,7 @@ export function PanelCelda({
           <h3 className={ETIQUETA_SECCION}>Encargado de este paso</h3>
           <input
             value={form.assignedNote}
-            onChange={(e) => setForm({ ...form, assignedNote: e.target.value })}
+            onChange={(e) => setForm({ ...form, assignedNote: e.target.value.toUpperCase() })}
             placeholder="¿Quién quedó a cargo?"
             className={CAMPO_INPUT}
           />
@@ -624,7 +635,10 @@ export function PanelCelda({
               activo={form.branchValue === false}
               titulo="No hay ajustes"
               nota="Continúa al siguiente paso"
-              onClick={() => setForm({ ...form, branchValue: false })}
+              // Si no hay ajustes, el paso ya queda resuelto de una -- se
+              // marca como terminado de una vez, sin tener que ir aparte a
+              // elegirlo en "Estado".
+              onClick={() => setForm({ ...form, branchValue: false, status: 'terminado' })}
             />
             <BotonDecision
               activo={form.branchValue === true}
@@ -649,8 +663,9 @@ export function PanelCelda({
             <input
               type="date"
               value={form.doneDate}
+              disabled={form.status !== 'terminado'}
               onChange={(e) => setForm({ ...form, doneDate: e.target.value })}
-              className={CAMPO_INPUT}
+              className={`${CAMPO_INPUT} disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-50 dark:disabled:bg-slate-900/30`}
             />
           </label>
 
@@ -781,7 +796,9 @@ function BotonDecision({
     <button
       onClick={onClick}
       data-activo={activo}
-      className={`flex w-full flex-col gap-1 rounded-lg border px-3 py-2.5 text-left transition-colors ${
+      className={`flex w-full flex-col gap-1 rounded-lg border px-3 py-2.5 text-left transition-colors
+                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500
+                  focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-900 ${
         activo
           ? 'border-cyan-600 bg-cyan-50/70 dark:border-cyan-500 dark:bg-cyan-500/10'
           : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/40'

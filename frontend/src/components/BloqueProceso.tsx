@@ -1,4 +1,4 @@
-import { Fragment } from 'react';
+import { Fragment, useEffect, useRef } from 'react';
 import { CeldaProceso } from './CeldaProceso';
 import { pasosVisibles, etiquetaPaso } from '../lib/bloques';
 import { pasoQueFalta } from '@shared/pipelineTemplate';
@@ -13,6 +13,19 @@ interface Props {
   /** oculta el título/contador y la tarjeta — para cuando el bloque ya se muestra
    *  dentro de otro contenedor (la ventana flotante de un apartado) */
   soloContenido?: boolean;
+}
+
+// Flechas para moverse entre las fichas de paso sin tocar el mouse -- Enter
+// ya las abre solo, por ser <button> nativos (comportamiento del navegador).
+function manejarFlechas(e: React.KeyboardEvent<HTMLDivElement>) {
+  if (!['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+  const botones = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('button'));
+  const actual = botones.indexOf(document.activeElement as HTMLButtonElement);
+  if (actual === -1) return;
+  e.preventDefault();
+  const avanza = e.key === 'ArrowDown' || e.key === 'ArrowRight';
+  const siguiente = avanza ? (actual + 1) % botones.length : (actual - 1 + botones.length) % botones.length;
+  botones[siguiente]?.focus();
 }
 
 export function BloqueProceso({
@@ -32,8 +45,22 @@ export function BloqueProceso({
     }
   }
 
+  // Foco automático apenas se muestra la lista -- así las flechas sirven de
+  // una sin tener que tocar el mouse primero (mismo criterio que el estado
+  // del paso en PanelCelda.tsx). El llamador remonta este componente por
+  // apartado (ver key={apartado} en ModalApartado) para que esto corra cada
+  // vez que se entra a uno distinto, no solo la primera vez.
+  const contenedorRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    contenedorRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
+  }, []);
+
   const celdasEl = (
-    <div className={soloContenido ? 'flex flex-wrap gap-1.5' : 'flex gap-1.5 overflow-x-auto pb-1'}>
+    <div
+      ref={contenedorRef}
+      onKeyDown={manejarFlechas}
+      className={soloContenido ? 'flex flex-wrap gap-1.5' : 'flex gap-1.5 overflow-x-auto pb-1'}
+    >
       {visibles.map((p) => {
         const clave = p.step.repeatable ? `${p.blockKey}.${p.step.key}` : null;
         const esUltimoVisible = clave !== null && p.instance === ultimoVisiblePorPaso.get(clave);

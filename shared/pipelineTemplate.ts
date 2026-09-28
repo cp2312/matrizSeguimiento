@@ -97,6 +97,12 @@ export const PIPELINE_TEMPLATE: BlockDef[] = [
       },
       { key: 'envio_diseno_grafico', label: 'Envío a diseño gráfico', hasComment: true },
       {
+        key: 'recepcion_libro_disenado',
+        label: 'Recepción de libro diseñado',
+        hasComment: true,
+        commentLabel: 'Ajustes',
+      },
+      {
         key: 'isbn',
         label: 'ISBN',
         hasComment: true,
@@ -108,12 +114,6 @@ export const PIPELINE_TEMPLATE: BlockDef[] = [
           { value: 'pendiente_equipo', label: 'Enviado a ediciones' },
           { value: 'terminado', label: 'Recibido / Finalizado' },
         ],
-      },
-      {
-        key: 'recepcion_libro_disenado',
-        label: 'Recepción de libro diseñado',
-        hasComment: true,
-        commentLabel: 'Ajustes',
       },
       {
         key: 'turnitin_repositorio',
@@ -147,7 +147,15 @@ export const PIPELINE_TEMPLATE: BlockDef[] = [
     label: 'Estructura',
     steps: [
       { key: 'elaboracion_estructura', label: 'Elaboración estructura', hasComment: true },
-      { key: 'reunion_inicial', label: 'Reunión inicial', hasComment: false },
+      {
+        key: 'reunion_inicial',
+        label: 'Reunión inicial',
+        hasComment: false,
+        // Al terminar la reunión inicial, en la práctica ya queda resuelto
+        // también lo de después -- se completan solos, sin esperar a que se
+        // marquen a mano uno por uno.
+        autoCompletaJunto: ['revision_experto', 'estructura_final'],
+      },
       { key: 'revision_experto', label: 'Revisión estructura por experto', hasComment: false },
       { key: 'estructura_final', label: 'Estructura final', hasComment: false },
     ],
@@ -163,6 +171,7 @@ export const PIPELINE_TEMPLATE: BlockDef[] = [
     label: 'Rutas',
     steps: [
       { key: 'reunion_inicial_experto', label: 'Reunión inicial con experto', hasComment: false },
+      { key: 'proyeccion_inicial', label: 'Proyección inicial', hasComment: false },
       { key: 'entrega_inicial_experto', label: 'Entrega inicial por experto', hasComment: false },
       {
         key: 'ajustes_cv',
