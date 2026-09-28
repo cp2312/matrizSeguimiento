@@ -32,3 +32,12 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* Tailwind v4 deja los <button> en cursor:default (el comportamiento nativo
+   del navegador) en vez del cursor:pointer que traía v3 -- se nota sobre
+   todo en botones tipo "píldora" (filtros, estados) donde no queda obvio que
+   son clicables. Se restaura acá una sola vez para todos los botones de la
+   app, en vez de agregar cursor-pointer manualmente en cada uno. */
+button:not(:disabled) {
+  cursor: pointer;
+}

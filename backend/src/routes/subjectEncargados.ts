@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { query } from '../db/pool.js';
-import { requireAdmin } from '../middleware/auth.js';
 import { CATEGORIAS_ENCARGADO } from '../../../shared/types.js';
 import type { CategoriaEncargado } from '../../../shared/types.js';
 
@@ -54,9 +53,10 @@ subjectEncargadosRouter.get('/subjects/:id/encargados', async (req, res) => {
 });
 
 // Asigna (o quita, con userId null, para volver a usar el global) el
-// encargado de una categoría propio de esta asignatura. Solo un
-// administrador puede reasignar a quién le llegan los correos.
-subjectEncargadosRouter.put('/subjects/:id/encargados/:category', requireAdmin, async (req, res) => {
+// encargado de una categoría propio de esta asignatura. Cualquier usuario
+// con sesión puede reasignarlo (no solo un administrador) -- así el equipo
+// puede cambiarlo sin depender de que un admin esté disponible.
+subjectEncargadosRouter.put('/subjects/:id/encargados/:category', async (req, res) => {
   const subjectId = req.params.id;
   const { category } = req.params;
   const { userId } = req.body;

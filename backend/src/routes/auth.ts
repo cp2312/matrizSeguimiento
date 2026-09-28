@@ -226,6 +226,18 @@ authRouter.get('/usuarios', requireAuth, requireAdmin, async (_req, res) => {
   res.json(usuarios);
 });
 
+// Lista liviana de usuarios activos (solo id y nombre, sin correo ni rol) --
+// a diferencia de arriba, cualquiera con sesión la puede pedir, no solo un
+// administrador. La usa el selector de "Encargado de [categoría]" en el
+// panel de un paso, que cualquier usuario puede reasignar (ver
+// subjectEncargados.ts).
+authRouter.get('/usuarios/activos', requireAuth, async (_req, res) => {
+  const usuarios = await query(
+    `SELECT id, full_name FROM users WHERE active ORDER BY full_name`
+  );
+  res.json(usuarios);
+});
+
 authRouter.post('/usuarios', requireAuth, requireAdmin, async (req, res) => {
   const { fullName, email, initials, role, password } = req.body;
 

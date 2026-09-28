@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { useFetch } from '../hooks/useFetch';
-import { useAuth } from '../context/useAuth';
 import { BotonConfirmar } from './ui/BotonConfirmar';
 import { Alerta } from './ui/Alerta';
 import { ESTADOS, ORDEN_ESTADOS } from '../lib/estados';
@@ -297,27 +296,25 @@ function FechaEntregaLibro({ subjectId, bookDueDate, onCambiada }: {
   );
 }
 
-/** Los usuarios activos, para el desplegable de encargado -- solo hace falta
- *  pedirlos si de verdad se va a mostrar el selector (admin). */
-function useUsuariosActivos(habilitado: boolean) {
-  const { datos } = useFetch<{ id: number; full_name: string; active: boolean }[]>(
-    habilitado ? '/auth/usuarios' : null
-  );
-  return datos?.filter((u) => u.active) ?? [];
+/** Los usuarios activos, para el desplegable de encargado -- lista liviana
+ *  (solo id y nombre) que puede pedir cualquiera con sesión, no solo un
+ *  administrador (ver GET /auth/usuarios/activos). */
+function useUsuariosActivos() {
+  const { datos } = useFetch<{ id: number; full_name: string }[]>('/auth/usuarios/activos');
+  return datos ?? [];
 }
 
 /** Quién es el encargado de esta categoría para ESTA asignatura puntual --
  *  puede ser distinto del encargado global (ver Usuarios > Encargados por
- *  categoría). Solo un administrador puede cambiarlo; cualquiera lo ve. */
+ *  categoría). Cualquier usuario con sesión lo puede cambiar, no solo un
+ *  administrador. */
 function EncargadoAsignatura({ subjectId, category, label }: {
   subjectId: number;
   category: CategoriaEncargado;
   label: string;
 }) {
-  const { usuario } = useAuth();
-  const esAdmin = usuario?.role === 'administrador';
   const { datos: encargados, recargar } = useFetch<SubjectCategoryOwner[]>(`/subjects/${subjectId}/encargados`);
-  const usuarios = useUsuariosActivos(esAdmin);
+  const usuarios = useUsuariosActivos();
   const [guardando, setGuardando] = useState(false);
 
   const fila = encargados?.find((e) => e.category === category);
@@ -338,26 +335,19 @@ function EncargadoAsignatura({ subjectId, category, label }: {
       <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-2">
         Encargado de {label}
       </p>
-      {esAdmin ? (
-        <select
-          value={fila.userId ? String(fila.userId) : ''}
-          disabled={guardando}
-          onChange={(e) => cambiar(e.target.value)}
-          className={CAMPO_INPUT}
-        >
-          <option value="">
-            {fila.globalUserFullName ? `Usar el general (${fila.globalUserFullName})` : 'Usar el general (sin asignar)'}
-          </option>
-          {usuarios.map((u) => (
-            <option key={u.id} value={u.id}>{u.full_name}</option>
-          ))}
-        </select>
-      ) : (
-        <p className="text-[12px] text-slate-700 dark:text-slate-200">
-          {fila.userFullName ?? fila.globalUserFullName ?? 'Sin asignar'}
-          {!fila.esPropio && fila.globalUserFullName && ' (general)'}
-        </p>
-      )}
+      <select
+        value={fila.userId ? String(fila.userId) : ''}
+        disabled={guardando}
+        onChange={(e) => cambiar(e.target.value)}
+        className={CAMPO_INPUT}
+      >
+        <option value="">
+          {fila.globalUserFullName ? `Usar el general (${fila.globalUserFullName})` : 'Usar el general (sin asignar)'}
+        </option>
+        {usuarios.map((u) => (
+          <option key={u.id} value={u.id}>{u.full_name}</option>
+        ))}
+      </select>
     </div>
   );
 }
