@@ -348,6 +348,10 @@ function EncargadoAsignatura({ subjectId, category, label }: {
           <option key={u.id} value={u.id}>{u.full_name}</option>
         ))}
       </select>
+      <p className="mt-1.5 text-[10px] leading-relaxed text-slate-400 dark:text-slate-500">
+        A esta persona le llega el correo de aviso cuando algo de "{label}" está por vencer o queda
+        pendiente en esta asignatura -- pisa al encargado general solo acá, sin afectar las demás asignaturas.
+      </p>
     </div>
   );
 }

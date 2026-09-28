@@ -8,7 +8,7 @@ import {
 import type { MatrixCell } from '../../../shared/types.js';
 
 /** Con cuántos días de anticipación al fin del contrato se dispara el aviso */
-const DIAS_AVISO = 15;
+const DIAS_AVISO = 20;
 
 interface ContratoPorVencer {
   teacher_id: number;
