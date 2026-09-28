@@ -39,7 +39,7 @@ export function ModalConfirmar({
         <Alerta>{error}</Alerta>
 
         <div className="flex gap-2 justify-end pt-1">
-          <Boton type="button" onClick={onCancelar}>Cancelar</Boton>
+          <Boton type="button" onClick={onCancelar} data-accion="cancelar">Cancelar</Boton>
           <Boton type="button" variante={variante} onClick={onConfirmar} disabled={enviando}>
             {enviando ? textoMientrasEnvia : textoConfirmar}
           </Boton>

@@ -159,6 +159,11 @@ export function ModalApartado({
 
   const [pasoSeleccionado, setPasoSeleccionado] = useState<string | null>(null);
 
+  // De qué vista se vino al elegir una tarjeta ('instancias' o 'todos'), para
+  // poder volver ahí en vez de saltar directo al fondo -- null si el detalle
+  // actual es la entrada de la ventana (ahí "volver" ya es cerrar del todo).
+  const [origenDetalle, setOrigenDetalle] = useState<Vista | null>(null);
+
   // Si el formulario del paso tiene cambios sin tocar "Guardar", cerrarlo
   // (Escape, fondo o la X) no los descarta en silencio: se pregunta primero,
   // con el modal de confirmación propio de la app (no el nativo del navegador).
@@ -167,16 +172,16 @@ export function ModalApartado({
 
   const cerrarModal = useCallback(() => onCerrar(), [onCerrar]);
 
-  // Cerrar desde el formulario del paso: con cambios sin guardar se pregunta y
-  // se vuelve a la lista del apartado; limpio (o recién guardado) se cierra el
-  // modal completo y queda un solo modal en pantalla.
+  // Cerrar desde el formulario del paso: con cambios sin guardar se pregunta;
+  // limpio, vuelve a la lista de pasos del apartado (no cierra la ventana --
+  // eso solo pasa al llegar al nivel más afuera, ver volverOCerrar).
   const cerrarDesdeForm = useCallback(() => {
     if (panelDirty.current) {
       setConfirmandoSalir(true);
       return;
     }
-    cerrarModal();
-  }, [cerrarModal]);
+    setPasoSeleccionado(null);
+  }, []);
 
   function confirmarSalirSinGuardar() {
     panelDirty.current = false;
@@ -185,6 +190,7 @@ export function ModalApartado({
   }
 
   function elegir(clave: string) {
+    setOrigenDetalle(vista);
     setApartadoManual(clave);
     setVistaManual('detalle');
     setPasoSeleccionado(null);
@@ -268,6 +274,29 @@ export function ModalApartado({
     ? grupoActivo?.pasos.find((p) => p.path === pasoSeleccionado) ?? null
     : null;
 
+  // Clic afuera de la ventana (o Escape): retrocede un nivel en la navegación
+  // interna en vez de cerrar todo de una -- paso abierto vuelve a la lista de
+  // pasos, una tarjeta elegida vuelve al selector de donde vino, y solo si ya
+  // no queda ningún nivel atrás se cierra la ventana completa.
+  const volverOCerrar = useCallback(() => {
+    if (pasoActivo) {
+      cerrarDesdeForm();
+      return;
+    }
+    if (vista === 'detalle' && origenDetalle) {
+      setPasoSeleccionado(null);
+      setApartadoManual(null);
+      setVistaManual(origenDetalle);
+      setOrigenDetalle(null);
+      return;
+    }
+    if (vista === 'todos') {
+      setVistaManual(null);
+      return;
+    }
+    cerrarModal();
+  }, [pasoActivo, cerrarDesdeForm, vista, origenDetalle, cerrarModal]);
+
   const titulo = cargando
     ? 'Cargando…'
     : vista === 'todos' ? 'Todos los apartados'
@@ -281,7 +310,7 @@ export function ModalApartado({
         titulo={titulo}
         subtitulo={!cargando && vista === 'detalle' ? `${terminadosActivo} de ${visiblesActivo.length} pasos` : undefined}
         ancho="grande"
-        onCerrar={pasoActivo ? cerrarDesdeForm : cerrarModal}
+        onCerrar={volverOCerrar}
         accionesTitulo={!cargando ? (
           <button
             onClick={() => {
@@ -324,47 +353,57 @@ export function ModalApartado({
             ))}
           </div>
         ) : vista === 'instancias' ? (
-          bloqueCompletamenteQuitado ? (
-            <div className="rounded-lg border border-dashed border-slate-300 dark:border-slate-700 px-4 py-8 text-center">
-              <p className="text-[13px] text-slate-500 dark:text-slate-400 mb-3">
-                Este apartado no aplica a esta asignatura.
-              </p>
-              <Boton onClick={() => desbloquearApartado(bloqueInicial!)}>Desbloquear</Boton>
-            </div>
-          ) : (
-            <div>
-              <div className="grid sm:grid-cols-2 gap-2">
-                {instanciasBloque.map(([clave, g]) => {
-                  const p0 = g.pasos[0];
-                  const esInstancia = p0 && p0.instance !== null;
-                  return (
-                    <ItemApartado
-                      key={clave}
-                      titulo={g.titulo}
-                      pasos={g.pasos}
-                      celdas={celdas}
-                      activo={clave === apartado}
-                      onClick={() => elegir(clave)}
-                      onEliminar={esInstancia ? () => setQuitando({ blockKey: p0.blockKey, instance: p0.instance!, etiqueta: g.titulo }) : undefined}
-                    />
-                  );
-                })}
-                {paraAgregarDelBloque.map((s) => (
-                  <TileAgregar key={s.clave} etiqueta={s.etiqueta} onClick={() => elegirParaAgregar(s)} />
-                ))}
+          <div>
+            {/* Todas las instancias garantizadas están quitadas -- el apartado
+                "no aplica". Si además queda alguna instancia EXTRA con datos
+                sueltos (p. ej. se guardó algo en "Podcast 2" antes de quitar
+                "Podcast 1"), esos datos no desaparecen solos: se muestran
+                abajo igual que siempre para poder quitarlos a mano, en vez de
+                esconderlos y dejarlos contando de por vida en el avance. */}
+            {bloqueCompletamenteQuitado && (
+              <div className="rounded-lg border border-dashed border-slate-300 dark:border-slate-700 px-4 py-6 text-center mb-3">
+                <p className="text-[13px] text-slate-500 dark:text-slate-400 mb-3">
+                  Este apartado no aplica a esta asignatura
+                  {instanciasBloque.length > 0 && ' -- pero quedan instancias con datos sueltos abajo, sin quitar'}.
+                </p>
+                <Boton onClick={() => desbloquearApartado(bloqueInicial!)}>Desbloquear</Boton>
               </div>
-              {totalGarantizadasDelBloque > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setConfirmandoBloquear(bloqueInicial!)}
-                  className="mt-3 text-[11.5px] text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400
-                             underline underline-offset-2"
-                >
-                  Bloquear este apartado completo (no aplica a esta asignatura)
-                </button>
-              )}
-            </div>
-          )
+            )}
+            {(!bloqueCompletamenteQuitado || instanciasBloque.length > 0) && (
+              <div>
+                <div className="grid sm:grid-cols-2 gap-2">
+                  {instanciasBloque.map(([clave, g]) => {
+                    const p0 = g.pasos[0];
+                    const esInstancia = p0 && p0.instance !== null;
+                    return (
+                      <ItemApartado
+                        key={clave}
+                        titulo={g.titulo}
+                        pasos={g.pasos}
+                        celdas={celdas}
+                        activo={clave === apartado}
+                        onClick={() => elegir(clave)}
+                        onEliminar={esInstancia ? () => setQuitando({ blockKey: p0.blockKey, instance: p0.instance!, etiqueta: g.titulo }) : undefined}
+                      />
+                    );
+                  })}
+                  {!bloqueCompletamenteQuitado && paraAgregarDelBloque.map((s) => (
+                    <TileAgregar key={s.clave} etiqueta={s.etiqueta} onClick={() => elegirParaAgregar(s)} />
+                  ))}
+                </div>
+                {totalGarantizadasDelBloque > 0 && !bloqueCompletamenteQuitado && (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmandoBloquear(bloqueInicial!)}
+                    className="mt-3 text-[11.5px] text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400
+                               underline underline-offset-2"
+                  >
+                    Bloquear este apartado completo (no aplica a esta asignatura)
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         ) : grupoActivo && pasoActivo ? (
           <PanelCelda
             key={pasoActivo.path}

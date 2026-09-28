@@ -337,6 +337,11 @@ function TarjetaAsignatura({
                 {modality === 'virtual' ? 'Virtual' : 'Presencial'}
               </span>
             )}
+            {avance === 100 && (
+              <span className="shrink-0 inline-flex items-center rounded-md bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
+                Por ofertar
+              </span>
+            )}
           </div>
           <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5 truncate">
             {credits} {credits === 1 ? 'crédito' : 'créditos'}

@@ -271,7 +271,7 @@ export function ModalNuevaAsignatura({ abierto, programa, asignatura, onCerrar, 
 
         <div className="flex flex-wrap items-center gap-3">
           <Casilla
-            etiqueta="¿El nombre del programa y el libro es igual?"
+            etiqueta="¿El nombre del espacio académico es diferente al del libro?"
             checked={libroIgual}
             onChange={(e) => { setLibroIgual(e.target.checked); setConfirmando(false); }}
           />

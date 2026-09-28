@@ -399,6 +399,28 @@ COMMENT ON TABLE subject_removed_instances IS 'Instancias garantizadas por credi
 
 
 -- ----------------------------------------------------------------------------
+--  subject_reset_backups
+--  Copia de seguridad automatica que se guarda justo antes de "Reiniciar
+--  matriz" (POST /subjects/:id/reiniciar) -- ese boton borra todas las
+--  celdas y docentes de la asignatura para volver a empezar de cero, asi que
+--  antes de borrar nada queda una copia completa aca (como JSON, tal cual
+--  estaban las filas) para poder revisarla o restaurarla despues.
+-- ----------------------------------------------------------------------------
+CREATE TABLE subject_reset_backups (
+  id         SERIAL  PRIMARY KEY,
+  subject_id INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+
+  celdas   JSONB NOT NULL,
+  teachers JSONB NOT NULL,
+
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+);
+
+COMMENT ON TABLE subject_reset_backups IS 'Copia de celdas y docentes de una asignatura guardada justo antes de "Reiniciar matriz"';
+
+
+-- ----------------------------------------------------------------------------
 --  category_owners
 --  A quien se le avisa por correo cuando un paso de esa categoria del
 --  proceso queda pendiente. Una fila fija por categoria monitoreada; el
@@ -497,6 +519,9 @@ CREATE INDEX idx_history_subject ON cell_history(subject_id, changed_at DESC);
 
 -- Para traer las instancias quitadas de una asignatura (o de todas las de un programa, por JOIN)
 CREATE INDEX idx_removed_instances_subject ON subject_removed_instances(subject_id);
+
+-- Para listar las copias de seguridad de una asignatura, mas reciente primero
+CREATE INDEX idx_reset_backups_subject ON subject_reset_backups(subject_id, created_at DESC);
 
 
 -- ============================================================================

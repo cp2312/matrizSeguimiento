@@ -2,16 +2,20 @@ import { useState } from 'react';
 import { useParams, useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { useMatriz } from '../hooks/useMatriz';
 import { useFetch } from '../hooks/useFetch';
+import { useAuth } from '../context/useAuth';
 import { api } from '../lib/api';
 import { Layout } from '../components/Layout';
 import { Alerta } from '../components/ui/Alerta';
 import { TituloPagina } from '../components/ui/TituloPagina';
 import { ModalConfirmar } from '../components/ui/ModalConfirmar';
+import { BotonConfirmar } from '../components/ui/BotonConfirmar';
 import { Cargando } from '../components/ui/Estado';
 import { Leyenda } from '../components/Leyenda';
 import { DocentesAsignatura } from '../components/DocentesAsignatura';
 import { ApartadosAsignatura } from '../components/ApartadosAsignatura';
 import { ModalNuevaAsignatura } from '../components/ModalNuevaAsignatura';
+import { ModalCopiasSeguridad } from '../components/ModalCopiasSeguridad';
+import { descargarAsignaturaExcel } from '../lib/exportar';
 import { agruparPasos } from '../lib/bloques';
 import type { Program } from '@shared/types';
 
@@ -37,15 +41,30 @@ function IconoBasura() {
   );
 }
 
+function IconoDescarga() {
+  return (
+    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="7 10 12 15 17 10" />
+      <line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+  );
+}
+
 export default function Asignatura() {
   const { id } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { usuario } = useAuth();
   const { datos, cargando, error, aplicarCelda, aplicarTeachers, recargar } = useMatriz(id);
   const [editando, setEditando] = useState(false);
   const [eliminando, setEliminando] = useState(false);
   const [borrando, setBorrando] = useState(false);
   const [errorBorrado, setErrorBorrado] = useState('');
+  const [viendoBackups, setViendoBackups] = useState(false);
+  const [exportando, setExportando] = useState(false);
+  const [errorExportar, setErrorExportar] = useState('');
 
   // Hace falta el programa (no solo la asignatura) para saber si pide
   // modalidad o nombre del programa al editar -- mismo dato que ya usa
@@ -70,6 +89,18 @@ export default function Asignatura() {
     recargar();
   }
 
+  async function exportarExcel() {
+    setExportando(true);
+    setErrorExportar('');
+    try {
+      await descargarAsignaturaExcel(asignatura.id, asignatura.name);
+    } catch (err) {
+      setErrorExportar(err instanceof Error ? err.message : 'Ocurrió un error');
+    } finally {
+      setExportando(false);
+    }
+  }
+
   async function confirmarEliminar() {
     setBorrando(true);
     setErrorBorrado('');
@@ -81,6 +112,13 @@ export default function Asignatura() {
     } finally {
       setBorrando(false);
     }
+  }
+
+  const completa = avance.total > 0 && avance.terminados === avance.total;
+
+  async function reiniciarMatriz() {
+    await api.post(`/subjects/${asignatura.id}/reiniciar`, {});
+    recargar();
   }
 
   const subtitulo = [
@@ -107,6 +145,49 @@ export default function Asignatura() {
         <span className="text-[13px] text-slate-500 dark:text-slate-400">
           {avance.terminados} de {avance.total} · {avance.porcentaje}%
         </span>
+        {completa && (
+          <span className="inline-flex items-center rounded-md bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
+            Por ofertar
+          </span>
+        )}
+        {completa && (
+          <BotonConfirmar
+            etiqueta="Reiniciar matriz"
+            etiquetaConfirmar="Sí, reiniciar"
+            titulo="Reiniciar matriz"
+            mensaje={
+              <>
+                ¿Reiniciar la matriz de <strong>{asignatura.name}</strong>? Se borra todo el avance de los
+                pasos y los docentes asignados -- queda como si el proceso empezara de nuevo, con la
+                asignatura ya creada. Queda una copia de seguridad de cómo estaba
+                {usuario?.role === 'administrador' ? ' (ver "Copias de seguridad")' : ''}.
+              </>
+            }
+            variante="peligro"
+            onConfirmar={reiniciarMatriz}
+            className="h-8 px-2.5 text-[13px]"
+          />
+        )}
+        {usuario?.role === 'administrador' && (
+          <button
+            onClick={() => setViendoBackups(true)}
+            className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-[13px] text-slate-500 dark:text-slate-400
+                       hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-white/10 transition-colors"
+          >
+            Copias de seguridad
+          </button>
+        )}
+        <button
+          onClick={exportarExcel}
+          disabled={exportando}
+          title="Descarga un Excel con la matriz de esta asignatura"
+          className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-[13px] text-slate-500 dark:text-slate-400
+                     hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-white/10 transition-colors
+                     disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <IconoDescarga />
+          {exportando ? 'Generando…' : 'Exportar Excel'}
+        </button>
         <button
           onClick={() => setEditando(true)}
           className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-[13px] text-slate-500 dark:text-slate-400
@@ -124,6 +205,8 @@ export default function Asignatura() {
           Eliminar
         </button>
       </TituloPagina>
+
+      {errorExportar && <Alerta>{errorExportar}</Alerta>}
 
       <div className="flex flex-col gap-4 max-w-3xl">
         <DocentesAsignatura
@@ -176,6 +259,13 @@ export default function Asignatura() {
         error={errorBorrado}
         onCancelar={() => setEliminando(false)}
         onConfirmar={confirmarEliminar}
+      />
+
+      <ModalCopiasSeguridad
+        abierto={viendoBackups}
+        subjectId={asignatura.id}
+        onCerrar={() => setViendoBackups(false)}
+        onRestaurado={recargar}
       />
     </Layout>
   );

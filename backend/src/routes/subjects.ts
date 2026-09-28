@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import type { PoolClient } from 'pg';
 import { query, queryOne, withTransaction } from '../db/pool.js';
+import { requireAdmin } from '../middleware/auth.js';
 import { totalSteps } from '../../../shared/pipelineTemplate.js';
 import { hoyISO } from '../../../shared/businessDays.js';
 import type { MatrixCell, Subject, SubjectTeacher } from '../../../shared/types.js';
@@ -271,5 +272,109 @@ subjectsRouter.patch('/subjects/:id', async (req, res) => {
 
 subjectsRouter.delete('/subjects/:id', async (req, res) => {
   await query('DELETE FROM subjects WHERE id = $1', [req.params.id]);
+  res.status(204).send();
+});
+
+// Reiniciar matriz: borra todo el avance de los pasos y los docentes
+// asignados -- como si el proceso volviera a empezar de cero, pero con la
+// asignatura ya creada (nombre, créditos, libro, etc. no se tocan). No
+// restaura instancias quitadas/bloqueadas (ver removedInstances.ts) -- eso
+// se maneja aparte, esto solo es el avance. Antes de borrar nada, guarda una
+// copia completa en subject_reset_backups (ver GET/POST .../backups abajo).
+subjectsRouter.post('/subjects/:id/reiniciar', async (req, res) => {
+  const existente = await queryOne<Subject>('SELECT * FROM subjects WHERE id = $1', [req.params.id]);
+  if (!existente) return res.status(404).json({ error: 'Asignatura no encontrada' });
+
+  await withTransaction(async (client) => {
+    const { rows: celdas } = await client.query<MatrixCell>(
+      'SELECT * FROM matrix_cells WHERE subject_id = $1', [req.params.id]
+    );
+    const { rows: teachers } = await client.query<SubjectTeacher>(
+      'SELECT * FROM subject_teachers WHERE subject_id = $1', [req.params.id]
+    );
+
+    await client.query(
+      `INSERT INTO subject_reset_backups (subject_id, celdas, teachers, created_by)
+       VALUES ($1, $2, $3, $4)`,
+      [req.params.id, JSON.stringify(celdas), JSON.stringify(teachers), req.user?.id ?? null]
+    );
+
+    await client.query('DELETE FROM matrix_cells WHERE subject_id = $1', [req.params.id]);
+    await client.query('DELETE FROM subject_teachers WHERE subject_id = $1', [req.params.id]);
+    await client.query('UPDATE subjects SET completion_email_sent_at = NULL WHERE id = $1', [req.params.id]);
+  });
+
+  res.status(204).send();
+});
+
+interface FilaBackup {
+  id: number;
+  created_at: string;
+  full_name: string | null;
+  celdas: MatrixCell[];
+  teachers: SubjectTeacher[];
+}
+
+// Copias de seguridad guardadas por "Reiniciar matriz" -- solo lectura, para
+// que un administrador pueda revisar o restaurar una asignatura reiniciada
+// por error. Más reciente primero.
+subjectsRouter.get('/subjects/:id/backups', requireAdmin, async (req, res) => {
+  const filas = await query<FilaBackup>(
+    `SELECT b.id, b.created_at, b.celdas, b.teachers, u.full_name
+     FROM subject_reset_backups b
+     LEFT JOIN users u ON u.id = b.created_by
+     WHERE b.subject_id = $1
+     ORDER BY b.created_at DESC`,
+    [req.params.id]
+  );
+
+  res.json(filas.map((f) => ({
+    id: f.id,
+    createdAt: f.created_at,
+    creadoPor: f.full_name,
+    celdasCount: f.celdas.length,
+    teachersCount: f.teachers.length,
+  })));
+});
+
+// Restaura una copia de seguridad: reemplaza las celdas y docentes actuales
+// de la asignatura por los que tenía guardados esa copia. Como "Reiniciar
+// matriz" siempre la deja vacía antes de la copia siguiente, no hay
+// conflictos que resolver -- simplemente se reinsertan tal cual estaban.
+subjectsRouter.post('/subjects/:id/backups/:backupId/restaurar', requireAdmin, async (req, res) => {
+  const backup = await queryOne<{ celdas: MatrixCell[]; teachers: SubjectTeacher[] }>(
+    'SELECT celdas, teachers FROM subject_reset_backups WHERE id = $1 AND subject_id = $2',
+    [req.params.backupId, req.params.id]
+  );
+  if (!backup) return res.status(404).json({ error: 'Copia de seguridad no encontrada' });
+
+  await withTransaction(async (client) => {
+    await client.query('DELETE FROM matrix_cells WHERE subject_id = $1', [req.params.id]);
+    await client.query('DELETE FROM subject_teachers WHERE subject_id = $1', [req.params.id]);
+
+    for (const c of backup.celdas) {
+      await client.query(
+        `INSERT INTO matrix_cells
+           (subject_id, step_path, status, done_date, initials, comment, second_comment,
+            branch_value, due_date, due_date_warning_sent_at, reference_date, assigned_note,
+            version, updated_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+        [
+          req.params.id, c.step_path, c.status, c.done_date, c.initials, c.comment, c.second_comment,
+          c.branch_value, c.due_date, c.due_date_warning_sent_at, c.reference_date, c.assigned_note,
+          c.version, c.updated_by,
+        ]
+      );
+    }
+
+    for (const t of backup.teachers) {
+      await client.query(
+        `INSERT INTO subject_teachers (subject_id, full_name, start_date, end_date, contract_type)
+         VALUES ($1,$2,$3,$4,$5)`,
+        [req.params.id, t.full_name, t.start_date, t.end_date, t.contract_type]
+      );
+    }
+  });
+
   res.status(204).send();
 });

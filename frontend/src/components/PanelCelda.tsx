@@ -30,6 +30,9 @@ interface Props {
   onGuardado: (celda: MatrixCell) => void;
   onTeachersChanged: (teachers: SubjectTeacher[]) => void;
   onBookDueDateChanged: (bookDueDate: string | null) => void;
+  /** cancelar/Escape/clic afuera/guardado con éxito -- siempre vuelve un
+   *  nivel atrás (a la lista de pasos de este apartado), no cierra la
+   *  ventana entera (ver ModalApartado) */
   onCerrar: () => void;
   onRecargar?: () => void;
   /** avisa hacia afuera si el formulario tiene cambios sin guardar (para
@@ -409,6 +412,14 @@ export function PanelCelda({
 
   useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
 
+  // Foco automático en el estado ya elegido apenas se abre el paso -- así las
+  // flechas para moverse entre opciones (ver manejarFlechasOpciones) sirven
+  // de una, sin tener que tocar el mouse primero para poner el foco ahí.
+  const estadoGrupoRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    estadoGrupoRef.current?.querySelector<HTMLButtonElement>('[data-activo="true"]')?.focus();
+  }, []);
+
   /** Corre antes de pedir confirmación -- si algo falta, se avisa de una vez
    *  en vez de hacer confirmar algo que de todas formas va a fallar. */
   function validar(): boolean {
@@ -471,21 +482,42 @@ export function PanelCelda({
     }
   }
 
-  // Enter en cualquier campo de texto/fecha dispara la misma acción que el
+  // Enter en cualquier parte del formulario dispara la misma acción que el
   // botón "Guardar cambios" -- la primera vez abre la confirmación, y con la
-  // confirmación ya abierta, confirma (ese es siempre el último botón
-  // dentro de este contenedor: BotonConfirmar deja su propio botón montado
-  // y, encima, "Cancelar"/"Sí, guardar" del modal de confirmación una vez
-  // abierto). Los botones de Estado/Decisión ya reaccionan solos a Enter
-  // por ser <button>, así que ahí no hace falta tocar nada.
+  // confirmación ya abierta, confirma (ese es siempre el último botón dentro
+  // de este contenedor: BotonConfirmar deja su propio botón montado y,
+  // encima, "Cancelar"/"Sí, guardar" del modal de confirmación una vez
+  // abierto). Los botones de "cancelar/cerrar" (data-accion) quedan afuera
+  // para no guardar por error al querer salir. Los de Estado/Decisión
+  // (data-activo) son un caso especial: mientras esa opción todavía NO está
+  // elegida, se deja que el Enter la elija de una (comportamiento nativo del
+  // botón) en vez de saltar a guardar -- así las flechas para moverse entre
+  // opciones + Enter para elegir alcanzan sin tocar el mouse. Ya elegida
+  // (con el mouse o con un Enter anterior), un Enter más sí guarda.
   const pieRef = useRef<HTMLDivElement>(null);
   function manejarEnterFormulario(e: React.KeyboardEvent<HTMLDivElement>) {
     if (e.key !== 'Enter') return;
     const target = e.target as HTMLElement;
-    if (target.tagName === 'TEXTAREA' || target.tagName === 'BUTTON') return;
+    if (target.tagName === 'TEXTAREA') return;
+    if (target.dataset.accion === 'cancelar') return;
+    if (target.dataset.activo === 'false') return;
     e.preventDefault();
     const botones = pieRef.current?.querySelectorAll('button');
     if (botones?.length) botones[botones.length - 1].click();
+  }
+
+  // Flechas arriba/abajo (o izquierda/derecha) mueven el foco entre los
+  // botones de un grupo de opciones (Estado, Decisión) sin elegir nada
+  // todavía -- elegir es cosa del Enter, ver manejarEnterFormulario.
+  function manejarFlechasOpciones(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (!['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+    const botones = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('button'));
+    const actual = botones.indexOf(document.activeElement as HTMLButtonElement);
+    if (actual === -1) return;
+    e.preventDefault();
+    const avanza = e.key === 'ArrowDown' || e.key === 'ArrowRight';
+    const siguiente = avanza ? (actual + 1) % botones.length : (actual - 1 + botones.length) % botones.length;
+    botones[siguiente]?.focus();
   }
 
   return (
@@ -502,6 +534,7 @@ export function PanelCelda({
         </div>
         <button
           onClick={onCerrar}
+          data-accion="cancelar"
           className="shrink-0 rounded-md p-1 text-lg leading-none text-slate-400 dark:text-slate-500 transition-colors hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-300"
           aria-label="Cerrar"
         >
@@ -532,7 +565,7 @@ export function PanelCelda({
       {/* Estado */}
       <section className="mb-5">
         <h3 className={ETIQUETA_SECCION}>Estado</h3>
-        <div className="space-y-1.5">
+        <div ref={estadoGrupoRef} className="space-y-1.5" onKeyDown={manejarFlechasOpciones}>
           {(step.customStates ?? ORDEN_ESTADOS.map((estado) => ({ value: estado, label: ESTADOS[estado].label }))).map(
             ({ value: estado, label }) => {
               const e = ESTADOS[estado];
@@ -541,6 +574,7 @@ export function PanelCelda({
                 <button
                   key={estado}
                   onClick={() => setForm({ ...form, status: estado })}
+                  data-activo={activo}
                   className={`flex w-full items-center gap-2.5 rounded-lg border px-3 text-left text-[12px] transition-colors ${
                     activo
                       ? 'h-9 border-cyan-600 bg-cyan-50/70 font-medium text-slate-900 dark:border-cyan-500 dark:bg-cyan-500/10 dark:text-slate-100'
@@ -591,7 +625,7 @@ export function PanelCelda({
       {step.isBranchPoint && (
         <section className="mb-5">
           <h3 className={ETIQUETA_SECCION}>¿Hay ajustes?</h3>
-          <div className="grid gap-2.5 sm:grid-cols-2">
+          <div className="grid gap-2.5 sm:grid-cols-2" onKeyDown={manejarFlechasOpciones}>
             <BotonDecision
               activo={form.branchValue === false}
               titulo="No hay ajustes"
@@ -723,6 +757,7 @@ export function PanelCelda({
           <button
             type="button"
             onClick={onCerrar}
+            data-accion="cancelar"
             className="h-9 rounded-lg px-3.5 text-[12px] text-slate-500 transition-colors hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100"
           >
             Cancelar
@@ -751,6 +786,7 @@ function BotonDecision({
   return (
     <button
       onClick={onClick}
+      data-activo={activo}
       className={`flex w-full flex-col gap-1 rounded-lg border px-3 py-2.5 text-left transition-colors ${
         activo
           ? 'border-cyan-600 bg-cyan-50/70 dark:border-cyan-500 dark:bg-cyan-500/10'

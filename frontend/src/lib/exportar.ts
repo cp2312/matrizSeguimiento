@@ -5,8 +5,8 @@ import { token } from './token';
  * puede usar el helper `api` normal -- pide con fetch a mano, arma un link
  * temporal con el blob recibido y lo "clickea" solo para bajarlo.
  */
-export async function descargarMatrizExcel() {
-  const res = await fetch('/api/exportar', {
+async function descargar(url: string, nombreArchivo: string) {
+  const res = await fetch(url, {
     headers: { Authorization: `Bearer ${token.get()}` },
   });
   if (!res.ok) {
@@ -14,12 +14,23 @@ export async function descargarMatrizExcel() {
     throw new Error(cuerpo.error ?? 'No se pudo generar el Excel');
   }
   const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
+  const enlaceBlob = URL.createObjectURL(blob);
   const enlace = document.createElement('a');
-  enlace.href = url;
-  enlace.download = `matriz-seguimiento-${new Date().toISOString().slice(0, 10)}.xlsx`;
+  enlace.href = enlaceBlob;
+  enlace.download = nombreArchivo;
   document.body.appendChild(enlace);
   enlace.click();
   enlace.remove();
-  URL.revokeObjectURL(url);
+  URL.revokeObjectURL(enlaceBlob);
+}
+
+export async function descargarMatrizExcel() {
+  await descargar('/api/exportar', `matriz-seguimiento-${new Date().toISOString().slice(0, 10)}.xlsx`);
+}
+
+export async function descargarAsignaturaExcel(subjectId: number, nombreAsignatura: string) {
+  await descargar(
+    `/api/subjects/${subjectId}/exportar`,
+    `matriz-${nombreAsignatura}-${new Date().toISOString().slice(0, 10)}.xlsx`
+  );
 }
