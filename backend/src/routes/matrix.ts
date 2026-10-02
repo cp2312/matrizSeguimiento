@@ -1,8 +1,6 @@
 import { Router } from 'express';
 import type { Server as SocketIOServer } from 'socket.io';
 import { query, queryOne, withTransaction } from '../db/pool.js';
-import { enviarAvisoPendiente } from '../lib/mailer.js';
-import { obtenerEncargado } from '../lib/encargados.js';
 import { revisarSiSeCompleto } from '../lib/completionEmail.js';
 import { cargarQuitadas, cargarQuitadasPorPrograma } from '../lib/removedInstances.js';
 import {
@@ -12,46 +10,6 @@ import {
 } from '../../../shared/pipelineTemplate.js';
 import { sumarDiasHabiles, hoyISO } from '../../../shared/businessDays.js';
 import type { BlockDef, MatrixCell, StepDef, Subject, SubjectTeacher } from '../../../shared/types.js';
-
-/**
- * "Pendiente jefe" avisa siempre a la jefe (categoría especial "jefe"), sin
- * importar en qué apartado haya pasado -- ese estado ya significa "necesita
- * a la jefe" en cualquier parte de la asignatura. Un paso que solo queda "En
- * proceso" (pendiente_equipo) NO avisa por correo -- esos avisos son por
- * fecha límite (ver dueDateWarnings.ts) o fecha de contrato/entrega (ver
- * contractWarnings.ts / bookWarnings.ts), no por el simple cambio de estado.
- * Solo avisa si el estado ACABA de pasar a "Pendiente jefe" (no si ya lo
- * estaba). Nunca lanza: un correo que falla no debe tumbar el guardado.
- */
-async function avisarSiQuedaPendiente(
-  blockLabel: string, estadoAnterior: string | undefined,
-  celda: MatrixCell, asignaturaNombre: string, pasoLabel: string
-): Promise<void> {
-  if (celda.status !== 'pendiente_jefe') return;
-  if (celda.status === estadoAnterior) return;
-
-  try {
-    const encargado = await obtenerEncargado('jefe', celda.subject_id);
-    if (!encargado) return;
-
-    // El "apartado" que abre el link es el step_path sin el último tramo:
-    // "guias.1.recepcion_experto" -> "guias.1"; "contrato.tipo_contrato" -> "contrato"
-    const apartado = celda.step_path.split('.').slice(0, -1).join('.');
-
-    await enviarAvisoPendiente({
-      paraEmail: encargado.email,
-      paraNombre: encargado.full_name,
-      asignatura: asignaturaNombre,
-      categoria: blockLabel,
-      paso: pasoLabel,
-      estado: celda.status,
-      subjectId: celda.subject_id,
-      apartado,
-    });
-  } catch (err) {
-    console.error('[matrix] Error al avisar por correo:', err);
-  }
-}
 
 /**
  * Copia un paso recién marcado como terminado a las demás instancias del
@@ -321,12 +279,6 @@ router.patch('/subjects/:subjectId/matrix/*stepPath', async (req, res) => {
     // Las iniciales salen del usuario, no del cliente
     const usuario = (req as any).user ?? { id: null, initials: null };
 
-    // Para saber si el estado recién ENTRA a pendiente (y no si ya lo estaba)
-    const celdaPrevia = await queryOne<{ status: string }>(
-      'SELECT status FROM matrix_cells WHERE subject_id = $1 AND step_path = $2',
-      [subjectId, stepPath]
-    );
-
     // Optimistic locking: si el cliente envía una versión, verificar que coincida
     if (version !== undefined && version !== null) {
       const actual = await queryOne<{ version: number }>(
@@ -390,11 +342,7 @@ router.patch('/subjects/:subjectId/matrix/*stepPath', async (req, res) => {
       // Tiempo real: todos los que vean esta asignatura reciben el cambio
       io.to(`subject:${subjectId}`).emit('cell:updated', celda);
 
-      // Aviso por correo: no se espera a que termine para responder al cliente
       const { instance } = parseStepPath(stepPath);
-      void avisarSiQuedaPendiente(
-        def.block.label, celdaPrevia?.status, celda, asignatura.name, etiquetaPaso(def.step, instance)
-      );
 
       // Un paso de los "de siempre igual" (antes de la revisión final/ajustes,
       // ver esPasoPropagable) se completa solo en las demás instancias del
