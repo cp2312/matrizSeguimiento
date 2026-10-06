@@ -20,6 +20,28 @@ function diasHasta(fecha: string): number {
   return Math.round((fin.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24));
 }
 
+/** 'AAAA-1' = enero a junio, 'AAAA-2' = julio a diciembre -- mismo criterio
+ *  simple que ya usa el semestre de una asignatura, solo que a nivel de año. */
+function semestreActual(): { anio: number; semestre: 1 | 2 } {
+  const hoy = new Date();
+  return { anio: hoy.getFullYear(), semestre: hoy.getMonth() < 6 ? 1 : 2 };
+}
+
+/** Cuántos semestres faltan desde hoy hasta `fechaApertura` ('AAAA-1'/'AAAA-2')
+ *  -- 0 o negativo significa que ya debería estar abierto. Entre menos
+ *  semestres falten, más urgente es virtualizarlo. */
+function semestresHasta(fechaApertura: string): number {
+  const [anioStr, semStr] = fechaApertura.split('-');
+  const actual = semestreActual();
+  return (Number(anioStr) - actual.anio) * 2 + (Number(semStr) - actual.semestre);
+}
+
+function prioridadDesdeSemestres(n: number): 'alta' | 'media' | 'baja' {
+  if (n <= 1) return 'alta';
+  if (n === 2) return 'media';
+  return 'baja';
+}
+
 interface Alerta {
   tipo: 'fecha_limite' | 'contrato' | 'libro';
   etiqueta: string;
@@ -279,6 +301,81 @@ dashboardRouter.get('/dashboard', async (_req, res) => {
     .sort((a, b) => a.porcentaje - b.porcentaje)
     .slice(0, TOPE_ASIGNATURAS_ATRASADAS);
 
+  // Plan de virtualización: "virtualizada" = asignatura con el 100% de sus
+  // pasos en "Terminado". Las demás están "en proceso" (algo de avance) o
+  // "proyectadas" (sin ningún paso terminado todavía).
+  let virtualizados = 0;
+  let enProcesoVirtualizacion = 0;
+  let proyectados = 0;
+  const disponiblesIntercambio: { id: number; name: string; programId: number; programName: string }[] = [];
+
+  for (const a of porAsignaturaLista) {
+    const completa = a.total > 0 && a.terminados === a.total;
+    if (completa) {
+      virtualizados++;
+      disponiblesIntercambio.push({
+        id: a.id, name: a.name, programId: a.programId,
+        programName: programaPorId.get(a.programId)?.name ?? '',
+      });
+    } else if (a.terminados > 0) {
+      enProcesoVirtualizacion++;
+    } else {
+      proyectados++;
+    }
+  }
+
+  // Un programa "tiene pendientes" si alguna de sus asignaturas todavía no
+  // está virtualizada -- ordenado de más pendientes a menos, para ver primero
+  // el que más trabajo tiene por delante.
+  const pendientesPorProgramaMap = new Map<number, number>();
+  for (const a of porAsignaturaLista) {
+    if (!(a.total > 0 && a.terminados === a.total)) {
+      pendientesPorProgramaMap.set(a.programId, (pendientesPorProgramaMap.get(a.programId) ?? 0) + 1);
+    }
+  }
+  const programasPendientes = programas
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      pendientes: pendientesPorProgramaMap.get(p.id) ?? 0,
+      totalAsignaturas: porProgramaMap.get(p.id)?.asignaturas ?? 0,
+    }))
+    .filter((p) => p.pendientes > 0)
+    .sort((a, b) => b.pendientes - a.pendientes);
+
+  // Necesidades pendientes a nivel de espacio académico (no por programa) --
+  // los que menos avance llevan primero, para ver cuáles necesitan más trabajo.
+  const TOPE_NECESIDADES_PENDIENTES = 10;
+  const necesidadesPendientes = porAsignaturaLista
+    .filter((a) => !(a.total > 0 && a.terminados === a.total))
+    .map((a) => ({
+      id: a.id,
+      name: a.name,
+      programId: a.programId,
+      programName: programaPorId.get(a.programId)?.name ?? '',
+      porcentaje: a.total ? Math.round((a.terminados / a.total) * 100) : 0,
+    }))
+    .sort((a, b) => a.porcentaje - b.porcentaje)
+    .slice(0, TOPE_NECESIDADES_PENDIENTES);
+
+  // Solo los programas con fecha estimada de apertura entran a la
+  // priorización -- ordenados de la fecha más próxima a la más lejana
+  // (comparación de texto 'AAAA-N' ya ordena cronológicamente).
+  const programasPorPrioridad = programas
+    .filter((p): p is Program & { fecha_apertura: string } => !!p.fecha_apertura)
+    .sort((a, b) => a.fecha_apertura.localeCompare(b.fecha_apertura))
+    .map((p) => {
+      const agg = porProgramaMap.get(p.id) ?? { terminados: 0, total: 0, asignaturas: 0 };
+      return {
+        id: p.id,
+        name: p.name,
+        fechaApertura: p.fecha_apertura,
+        porcentaje: agg.total ? Math.round((agg.terminados / agg.total) * 100) : 0,
+        asignaturas: agg.asignaturas,
+        prioridad: prioridadDesdeSemestres(semestresHasta(p.fecha_apertura)),
+      };
+    });
+
   res.json({
     generadoEn: new Date().toISOString(),
     programas: { total: programas.length, porTipo },
@@ -296,5 +393,17 @@ dashboardRouter.get('/dashboard', async (_req, res) => {
     asignaturasMasAtrasadas,
     tendenciaSemanal: tendenciaSemanal.map((f) => ({ semana: f.semana, terminados: Number(f.terminados) })),
     alertas,
+    virtualizacion: {
+      espacios: {
+        virtualizados,
+        enProceso: enProcesoVirtualizacion,
+        proyectados,
+        total: asignaturas.length,
+      },
+      programasPendientes,
+      necesidadesPendientes,
+      disponiblesIntercambio,
+      programasPorPrioridad,
+    },
   });
 });

@@ -270,6 +270,9 @@ export default function ListadoProgramas() {
                     <th className="w-36 text-left font-medium text-[11px] uppercase tracking-wide text-slate-400 dark:text-slate-500 px-2 py-3">
                       Creado
                     </th>
+                    <th className="w-28 text-left font-medium text-[11px] uppercase tracking-wide text-slate-400 dark:text-slate-500 px-2 py-3">
+                      Apertura
+                    </th>
                     <th className="w-40" />
                   </tr>
                 </thead>
@@ -311,6 +314,9 @@ export default function ListadoProgramas() {
                       </td>
                       <td className="px-2 text-slate-500 dark:text-slate-400 text-[13px] tabular-nums whitespace-nowrap">
                         {formatearFecha(p.created_at)}
+                      </td>
+                      <td className="px-2 text-slate-500 dark:text-slate-400 text-[13px] tabular-nums whitespace-nowrap">
+                        {p.fecha_apertura ?? '—'}
                       </td>
                       <td className="text-right pr-4 whitespace-nowrap">
                         <Link
@@ -411,9 +417,14 @@ function ModalPrograma({
 }) {
   const esEdicion = !!programa;
 
-  const [form, setForm] = useState<{ name: string; notes: string; type: ProgramType; academicLevel: ProgramLevel | '' }>({
-    name: '', notes: '', type: 'presencial', academicLevel: '',
-  });
+  const FORM_VACIO = {
+    name: '', notes: '', type: 'presencial' as ProgramType, academicLevel: '' as ProgramLevel | '',
+    // Fecha estimada de apertura ('AAAA-1'/'AAAA-2') partida en dos campos
+    // para el formulario -- se combina recién al guardar (ver confirmarGuardado).
+    fechaAperturaAnio: '', fechaAperturaSemestre: '' as '' | '1' | '2',
+  };
+
+  const [form, setForm] = useState(FORM_VACIO);
   const [error, setError] = useState('');
   const [enviando, setEnviando] = useState(false);
   // Primer clic en "Guardar" arma la confirmación; el segundo (sobre "Sí,
@@ -424,16 +435,19 @@ function ModalPrograma({
   const [idCargado, setIdCargado] = useState<number | null>(null);
   if (abierto && programa && idCargado !== programa.id) {
     setIdCargado(programa.id);
+    const [anio, semestre] = programa.fecha_apertura?.split('-') ?? ['', ''];
     setForm({
       name: programa.name,
       notes: programa.notes ?? '',
       type: programa.type,
       academicLevel: programa.academic_level ?? '',
+      fechaAperturaAnio: anio,
+      fechaAperturaSemestre: (semestre === '1' || semestre === '2') ? semestre : '',
     });
   }
   if (abierto && !programa && idCargado !== null) {
     setIdCargado(null);
-    setForm({ name: '', notes: '', type: 'presencial', academicLevel: '' });
+    setForm(FORM_VACIO);
   }
   if (!abierto && confirmando) setConfirmando(false);
 
@@ -469,11 +483,19 @@ function ModalPrograma({
   async function confirmarGuardado() {
     setEnviando(true);
     try {
+      const { fechaAperturaAnio, fechaAperturaSemestre, ...resto } = form;
+      const payload = {
+        ...resto,
+        fechaApertura: fechaAperturaAnio && fechaAperturaSemestre
+          ? `${fechaAperturaAnio}-${fechaAperturaSemestre}`
+          : null,
+      };
+
       if (esEdicion) {
-        await api.patch(`/programs/${programa!.id}`, form);
+        await api.patch(`/programs/${programa!.id}`, payload);
       } else {
-        await api.post('/programs', form);
-        setForm({ name: '', notes: '', type: 'presencial', academicLevel: '' });
+        await api.post('/programs', payload);
+        setForm(FORM_VACIO);
       }
       setConfirmando(false);
       onGuardado();
@@ -504,6 +526,37 @@ function ModalPrograma({
             value={form.notes}
             onChange={(e) => set('notes', e.target.value)}
           />
+        </div>
+
+        <div className="border-t border-slate-200 dark:border-slate-700 pt-5">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-3">
+            Fecha estimada de apertura (opcional)
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <Campo
+              etiqueta="Año"
+              type="number"
+              placeholder="2027"
+              min={2000}
+              max={2100}
+              value={form.fechaAperturaAnio}
+              onChange={(e) => set('fechaAperturaAnio', e.target.value)}
+            />
+            <Select
+              etiqueta="Semestre"
+              opciones={[
+                { valor: '', etiqueta: 'Selecciona uno…' },
+                { valor: '1', etiqueta: '1' },
+                { valor: '2', etiqueta: '2' },
+              ]}
+              value={form.fechaAperturaSemestre}
+              onChange={(e) => set('fechaAperturaSemestre', e.target.value as '' | '1' | '2')}
+            />
+          </div>
+          <p className="mt-1.5 text-[11px] text-slate-400 dark:text-slate-500">
+            Semestre en el que el programa entra en oferta -- se usa para priorizar el plan de
+            virtualización en el Dashboard (los más próximos a abrir, primero).
+          </p>
         </div>
 
         <div className="border-t border-slate-200 dark:border-slate-700 pt-5">

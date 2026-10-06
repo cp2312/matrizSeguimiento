@@ -147,16 +147,23 @@ CREATE TABLE programs (
   -- el backend (routes/programs.ts), no con un CHECK, para no romper
   -- programas virtuales ya existentes al agregar esta columna.
   academic_level program_level,
+  -- Semestre estimado en el que el programa abre/entra en oferta, formato
+  -- 'AAAA-1' o 'AAAA-2' (igual de espiritu que subjects.semester, pero a
+  -- nivel de programa). Opcional -- se usa para priorizar el plan de
+  -- virtualizacion (ver GET /dashboard), no todos los programas lo tienen.
+  fecha_apertura TEXT,
   archived   BOOLEAN     NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 
-  CONSTRAINT chk_program_name_no_vacio CHECK (length(trim(name)) > 0)
+  CONSTRAINT chk_program_name_no_vacio CHECK (length(trim(name)) > 0),
+  CONSTRAINT chk_fecha_apertura_formato CHECK (fecha_apertura IS NULL OR fecha_apertura ~ '^[0-9]{4}-[12]$')
 );
 
 COMMENT ON COLUMN programs.notes     IS 'Notas de especificaciones del programa';
 COMMENT ON COLUMN programs.type      IS 'hibrido, presencial o virtual -- hibrido pide modalidad por asignatura; presencial (con asignatura virtual) pide el nombre del programa';
 COMMENT ON COLUMN programs.academic_level IS 'Pregrado o posgrado, solo cuando type es virtual';
+COMMENT ON COLUMN programs.fecha_apertura IS 'Semestre estimado de apertura, formato AAAA-1 / AAAA-2 -- para priorizar el plan de virtualizacion';
 COMMENT ON COLUMN programs.archived  IS 'Se oculta de la vista principal sin borrar el historico';
 
 

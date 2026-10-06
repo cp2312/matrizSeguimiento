@@ -145,6 +145,9 @@ export interface Program {
   type: ProgramType;
   /** pregrado o posgrado -- solo aplica cuando type es 'virtual'; null en los demás */
   academic_level: ProgramLevel | null;
+  /** semestre estimado de apertura, formato 'AAAA-1' / 'AAAA-2' -- opcional,
+   *  se usa para priorizar el plan de virtualización (ver GET /dashboard) */
+  fecha_apertura: string | null;
   archived: boolean;
   created_at: string;
   updated_at: string;
@@ -334,6 +337,29 @@ export interface DashboardResumen {
   tendenciaSemanal: { semana: string; terminados: number }[];
   /** fechas límite, contratos y entregas de libro por vencer o ya vencidos, ordenadas por urgencia */
   alertas: AlertaResumen[];
+  /** plan de virtualización: qué falta, qué ya está listo y en qué orden priorizarlo */
+  virtualizacion: VirtualizacionResumen;
+}
+
+/** "Virtualización" = una asignatura con el 100% de sus pasos en "Terminado" */
+export interface VirtualizacionResumen {
+  /** espacios académicos (asignaturas) repartidos en las tres etapas del plan */
+  espacios: { virtualizados: number; enProceso: number; proyectados: number; total: number };
+  /** programas que todavía tienen alguna asignatura sin virtualizar */
+  programasPendientes: { id: number; name: string; pendientes: number; totalAsignaturas: number }[];
+  /** asignaturas individuales sin virtualizar, de menor a mayor avance (tope 10) */
+  necesidadesPendientes: { id: number; name: string; programId: number; programName: string; porcentaje: number }[];
+  /** asignaturas ya virtualizadas (100%), disponibles para ofrecer entre seccionales */
+  disponiblesIntercambio: { id: number; name: string; programId: number; programName: string }[];
+  /** programas con fecha estimada de apertura, ordenados de más próxima a más lejana (mayor prioridad primero) */
+  programasPorPrioridad: {
+    id: number;
+    name: string;
+    fechaApertura: string;
+    porcentaje: number;
+    asignaturas: number;
+    prioridad: 'alta' | 'media' | 'baja';
+  }[];
 }
 
 /** Una fecha límite, un contrato de docente o una entrega de libro por vencer

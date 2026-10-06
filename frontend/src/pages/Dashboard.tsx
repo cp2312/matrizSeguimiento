@@ -6,7 +6,7 @@ import { TituloPagina } from '../components/ui/TituloPagina';
 import { Cargando, Vacio } from '../components/ui/Estado';
 import { ESTADOS, ORDEN_ESTADOS, fechaCorta } from '../lib/estados';
 import { ETIQUETA_TIPO } from '../lib/tiposPrograma';
-import type { AlertaResumen, CellStatus, DashboardResumen, ProgramType } from '@shared/types';
+import type { AlertaResumen, CellStatus, DashboardResumen, ProgramType, VirtualizacionResumen } from '@shared/types';
 
 function StatTile({ etiqueta, valor }: { etiqueta: string; valor: React.ReactNode }) {
   return (
@@ -275,6 +275,193 @@ function Alertas({ alertas }: { alertas: AlertaResumen[] }) {
   );
 }
 
+const ETIQUETA_PRIORIDAD: Record<'alta' | 'media' | 'baja', string> = {
+  alta: 'Alta', media: 'Media', baja: 'Baja',
+};
+const COLOR_PRIORIDAD: Record<'alta' | 'media' | 'baja', string> = {
+  alta: 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300',
+  media: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
+  baja: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+};
+
+function PrioridadBadge({ prioridad }: { prioridad: 'alta' | 'media' | 'baja' }) {
+  return (
+    <span className={`shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded-full ${COLOR_PRIORIDAD[prioridad]}`}>
+      {ETIQUETA_PRIORIDAD[prioridad]}
+    </span>
+  );
+}
+
+/** Plan de virtualización: qué tan virtualizados están los espacios
+ *  académicos (asignatura con el 100% de sus pasos en "Terminado"), qué
+ *  falta, qué ya se puede ofrecer entre seccionales y en qué orden
+ *  priorizar el trabajo según la fecha estimada de apertura de cada
+ *  programa (ver "Fecha estimada de apertura" al crear/editar un programa). */
+function PlanVirtualizacion({ datos }: { datos: VirtualizacionResumen }) {
+  const { espacios, programasPendientes, necesidadesPendientes, disponiblesIntercambio, programasPorPrioridad } = datos;
+  const porcentajeVirtualizado = espacios.total ? Math.round((espacios.virtualizados / espacios.total) * 100) : 0;
+
+  return (
+    <div className="space-y-4">
+      <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5">
+        <h2 className="text-[13px] font-semibold text-slate-800 dark:text-slate-100 mb-1">
+          Programas y espacios académicos que requieren virtualización
+        </h2>
+        <p className="text-[11px] text-slate-400 dark:text-slate-500 mb-2">
+          {espacios.enProceso + espacios.proyectados} de {espacios.total} espacios académicos, repartidos
+          en {programasPendientes.length} {programasPendientes.length === 1 ? 'programa' : 'programas'}
+        </p>
+        {programasPendientes.length === 0 ? (
+          <p className="text-[12px] text-slate-400 dark:text-slate-500">
+            Todos los programas están virtualizados al 100%.
+          </p>
+        ) : (
+          <div className="divide-y divide-slate-100 dark:divide-slate-800">
+            {programasPendientes.map((p) => (
+              <Link
+                key={p.id}
+                to={`/programas/${p.id}`}
+                className="flex items-center justify-between gap-3 py-2 -mx-2 px-2 rounded-lg transition-colors hover:bg-slate-50 dark:hover:bg-white/5"
+              >
+                <span className="text-[13px] font-medium text-slate-800 dark:text-slate-100 truncate">{p.name}</span>
+                <span className="shrink-0 text-[12px] text-slate-500 dark:text-slate-400">
+                  {p.pendientes} de {p.totalAsignaturas} por virtualizar
+                </span>
+              </Link>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5">
+        <h2 className="text-[13px] font-semibold text-slate-800 dark:text-slate-100 mb-1">
+          Espacios académicos virtualizados (100%), en proceso y proyectados
+        </h2>
+        <p className="text-[11px] text-slate-400 dark:text-slate-500 mb-3">
+          "Virtualizado" = asignatura con el 100% de sus pasos en "Terminado"
+        </p>
+        <div className="grid grid-cols-3 gap-3">
+          <StatTile etiqueta="Virtualizados (100%)" valor={espacios.virtualizados} />
+          <StatTile etiqueta="En proceso" valor={espacios.enProceso} />
+          <StatTile etiqueta="Proyectados" valor={espacios.proyectados} />
+        </div>
+      </section>
+
+      <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5">
+        <h2 className="text-[13px] font-semibold text-slate-800 dark:text-slate-100 mb-1">
+          Avance de los planes de virtualización
+        </h2>
+        <p className="text-[11px] text-slate-400 dark:text-slate-500 mb-3">
+          {espacios.virtualizados} de {espacios.total} espacios académicos ya virtualizados
+        </p>
+        <div className="flex items-center gap-3">
+          <BarraAvance porcentaje={porcentajeVirtualizado} className="flex-1 h-2.5" />
+          <span className="shrink-0 text-[13px] font-semibold tabular-nums text-slate-700 dark:text-slate-200">
+            {porcentajeVirtualizado}%
+          </span>
+        </div>
+      </section>
+
+      <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5">
+        <h2 className="text-[13px] font-semibold text-slate-800 dark:text-slate-100 mb-1">
+          Espacios académicos disponibles para intercambio entre seccionales <span className="font-normal text-slate-400 dark:text-slate-500">(estado virtualizados)</span>
+        </h2>
+        <p className="text-[11px] text-slate-400 dark:text-slate-500 mb-2">
+          Ya virtualizados al 100% -- listos para ofrecer en otra seccional
+        </p>
+        {disponiblesIntercambio.length === 0 ? (
+          <p className="text-[12px] text-slate-400 dark:text-slate-500">Todavía no hay ninguno al 100%.</p>
+        ) : (
+          <div className="max-h-[280px] overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 -mx-2">
+            {disponiblesIntercambio.map((a) => (
+              <Link
+                key={a.id}
+                to={`/asignaturas/${a.id}`}
+                className="flex items-center justify-between gap-3 py-2 px-2 rounded-lg transition-colors hover:bg-slate-50 dark:hover:bg-white/5"
+              >
+                <span className="text-[13px] font-medium text-slate-800 dark:text-slate-100 truncate">{a.name}</span>
+                <span className="shrink-0 text-[11px] text-slate-400 dark:text-slate-500 truncate">{a.programName}</span>
+              </Link>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5">
+        <h2 className="text-[13px] font-semibold text-slate-800 dark:text-slate-100 mb-1">
+          Necesidades de virtualización pendientes
+        </h2>
+        <p className="text-[11px] text-slate-400 dark:text-slate-500 mb-2">
+          Espacios académicos con menor avance, de toda la app (tope 10)
+        </p>
+        {necesidadesPendientes.length === 0 ? (
+          <p className="text-[12px] text-slate-400 dark:text-slate-500">
+            Todos los espacios académicos están virtualizados al 100%.
+          </p>
+        ) : (
+          <div className="divide-y divide-slate-100 dark:divide-slate-800">
+            {necesidadesPendientes.map((a) => (
+              <Link
+                key={a.id}
+                to={`/asignaturas/${a.id}`}
+                className="flex items-center justify-between gap-3 py-2 -mx-2 px-2 rounded-lg transition-colors hover:bg-slate-50 dark:hover:bg-white/5"
+              >
+                <div className="min-w-0">
+                  <p className="text-[13px] font-medium text-slate-800 dark:text-slate-100 truncate">{a.name}</p>
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">{a.programName}</p>
+                </div>
+                <span className="shrink-0 text-[12px] font-semibold tabular-nums text-slate-600 dark:text-slate-300">
+                  {a.porcentaje}%
+                </span>
+              </Link>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5">
+        <h2 className="text-[13px] font-semibold text-slate-800 dark:text-slate-100 mb-1">
+          Estado y nivel de priorización de cada proceso: fecha estimada de apertura
+        </h2>
+        <p className="text-[11px] text-slate-400 dark:text-slate-500 mb-3">
+          Del más próximo a abrir al más lejano
+        </p>
+        {programasPorPrioridad.length === 0 ? (
+          <p className="text-[12px] text-slate-400 dark:text-slate-500">
+            Ningún programa tiene todavía una fecha estimada de apertura -- se agrega al editarlo en
+            Programas.
+          </p>
+        ) : (
+          <div className="divide-y divide-slate-100 dark:divide-slate-800">
+            {programasPorPrioridad.map((p) => (
+              <Link
+                key={p.id}
+                to={`/programas/${p.id}`}
+                className="flex items-center gap-3 py-2.5 -mx-2 px-2 rounded-lg transition-colors hover:bg-slate-50 dark:hover:bg-white/5"
+              >
+                <span className="w-16 shrink-0 text-[12px] font-semibold tabular-nums text-slate-700 dark:text-slate-200">
+                  {p.fechaApertura}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-medium text-slate-800 dark:text-slate-100 truncate">{p.name}</p>
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                    {p.asignaturas} {p.asignaturas === 1 ? 'asignatura' : 'asignaturas'}
+                  </p>
+                </div>
+                <BarraAvance porcentaje={p.porcentaje} className="w-24 h-2 shrink-0 hidden sm:block" />
+                <span className="w-10 shrink-0 text-right text-[12px] font-semibold tabular-nums text-slate-600 dark:text-slate-300">
+                  {p.porcentaje}%
+                </span>
+                <PrioridadBadge prioridad={p.prioridad} />
+              </Link>
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const { datos, cargando, error, recargar } = useFetch<DashboardResumen>('/dashboard');
 
@@ -390,6 +577,8 @@ export default function Dashboard() {
               </div>
             </section>
           </div>
+
+          <PlanVirtualizacion datos={datos.virtualizacion} />
 
           <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5">
             <h2 className="text-[13px] font-semibold text-slate-800 dark:text-slate-100 mb-1">Asignaturas más atrasadas</h2>

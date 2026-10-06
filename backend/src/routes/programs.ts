@@ -6,6 +6,17 @@ export const programsRouter = Router();
 
 const TIPOS_VALIDOS: ProgramType[] = ['hibrido', 'presencial', 'virtual'];
 const NIVELES_VALIDOS: ProgramLevel[] = ['pregrado', 'posgrado'];
+/** Semestre estimado de apertura: 'AAAA-1' o 'AAAA-2' (mismo espíritu que subjects.semester) */
+const FORMATO_FECHA_APERTURA = /^\d{4}-[12]$/;
+
+function validarFechaApertura(valor: unknown): string | null | undefined {
+  if (valor === undefined) return undefined; // no vino en el body -- no tocar
+  if (valor === null || valor === '') return null;
+  if (typeof valor !== 'string' || !FORMATO_FECHA_APERTURA.test(valor)) {
+    throw new Error('La fecha estimada de apertura debe tener el formato AAAA-1 o AAAA-2');
+  }
+  return valor;
+}
 
 // Listar programas
 programsRouter.get('/', async (req, res) => {
@@ -30,7 +41,7 @@ programsRouter.get('/:id', async (req, res) => {
 
 // Crear
 programsRouter.post('/', async (req, res) => {
-  const { name, notes, type, academicLevel } = req.body;
+  const { name, notes, type, academicLevel, fechaApertura } = req.body;
 
   if (!name?.trim()) {
     return res.status(400).json({ error: 'El nombre del programa es obligatorio' });
@@ -51,9 +62,16 @@ programsRouter.post('/', async (req, res) => {
     nivel = academicLevel;
   }
 
+  let fecha: string | null | undefined;
+  try {
+    fecha = validarFechaApertura(fechaApertura);
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message });
+  }
+
   const programa = await queryOne<Program>(
-    `INSERT INTO programs (name, notes, type, academic_level) VALUES ($1, $2, $3, $4) RETURNING *`,
-    [name.trim(), notes ?? null, tipo, nivel]
+    `INSERT INTO programs (name, notes, type, academic_level, fecha_apertura) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+    [name.trim(), notes ?? null, tipo, nivel, fecha ?? null]
   );
 
   res.status(201).json(programa);
@@ -64,7 +82,7 @@ programsRouter.patch('/:id', async (req, res) => {
   const existente = await queryOne<Program>('SELECT * FROM programs WHERE id = $1', [req.params.id]);
   if (!existente) return res.status(404).json({ error: 'Programa no encontrado' });
 
-  const { name, notes, type, archived, academicLevel } = req.body;
+  const { name, notes, type, archived, academicLevel, fechaApertura } = req.body;
 
   if (type !== undefined && !TIPOS_VALIDOS.includes(type)) {
     return res.status(400).json({ error: 'El tipo debe ser hibrido, presencial o virtual' });
@@ -81,15 +99,23 @@ programsRouter.patch('/:id', async (req, res) => {
     nivel = candidato;
   }
 
+  let fecha: string | null | undefined;
+  try {
+    fecha = validarFechaApertura(fechaApertura);
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message });
+  }
+
   const programa = await queryOne<Program>(
-    `UPDATE programs SET name = $1, notes = $2, type = $3, archived = $4, academic_level = $5
-     WHERE id = $6 RETURNING *`,
+    `UPDATE programs SET name = $1, notes = $2, type = $3, archived = $4, academic_level = $5, fecha_apertura = $6
+     WHERE id = $7 RETURNING *`,
     [
       name?.trim() ?? existente.name,
       notes !== undefined ? notes : existente.notes,
       tipoFinal,
       archived !== undefined ? Boolean(archived) : existente.archived,
       nivel,
+      fecha !== undefined ? fecha : existente.fecha_apertura,
       req.params.id,
     ]
   );
