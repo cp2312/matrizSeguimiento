@@ -5,7 +5,7 @@ import { useAuth } from '../context/useAuth';
 import { useTema } from '../context/useTema';
 
 
-const URL_MATRIZ_EXCEL = 'https://usantotomaseduco-my.sharepoint.com/:x:/r/personal/dinstruccional_campusvirtual_ustatunja_edu_co/_layouts/15/Doc.aspx?sourcedoc=%7B880F9AD2-7FAA-57C5-E3B8-2115CD69D96E%7D&file=14032022_Matriz_montaje_Dise%C3%B1oAvanzadoPavimentosI_EGVP.xlsx&action=default&mobileredirect=true&CT=1790628033154&OR=OWA-NT-Mail&CID=42c4851c-d7fd-43c7-2b7c-99e488f9253a&SI=NonSentItems&SLSync=F';
+const URL_MATRIZ_EXCEL = 'https://usantotomaseduco-my.sharepoint.com/:x:/r/personal/dinstruccional_campusvirtual_ustatunja_edu_co/Documents/Documentos/Matrices%20Campus%20Virtual/Matriz%20de%20Seguimiento%20de%20espacios%20acad%C3%A9micos%20virtuales%20-%202025-1.xlsx?d=w19bc801ca1164db09f8aa088a7f7e80a&csf=1&web=1&e=ttG1sZ';
 
 interface Props {
   children: React.ReactNode;

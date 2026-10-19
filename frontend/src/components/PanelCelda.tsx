@@ -414,11 +414,13 @@ export function PanelCelda({
     estadoGrupoRef.current?.querySelector<HTMLButtonElement>('[data-activo="true"]')?.focus();
   }, []);
 
-  /** La fecha de terminado solo tiene sentido (y solo se puede editar) con
-   *  el estado en "Terminado" -- en cualquier otro estado se guarda sola con
-   *  la fecha de hoy, sin que se pueda tocar a mano. */
+  /** La fecha de terminado se puede editar a mano en "Terminado" y en "En
+   *  proceso" (para dejarla lista de una vez aunque todavía no se marque
+   *  como terminado) -- en cualquier otro estado se guarda sola con la
+   *  fecha de hoy, sin que se pueda tocar a mano. */
   function elegirEstado(estado: CellStatus) {
-    setForm({ ...form, status: estado, doneDate: estado === 'terminado' ? form.doneDate : hoyISO() });
+    const fechaEditable = estado === 'terminado' || estado === 'pendiente_equipo';
+    setForm({ ...form, status: estado, doneDate: fechaEditable ? form.doneDate : hoyISO() });
   }
 
   /** Corre antes de pedir confirmación -- si algo falta, se avisa de una vez
@@ -663,7 +665,7 @@ export function PanelCelda({
             <input
               type="date"
               value={form.doneDate}
-              disabled={form.status !== 'terminado'}
+              disabled={form.status !== 'terminado' && form.status !== 'pendiente_equipo'}
               onChange={(e) => setForm({ ...form, doneDate: e.target.value })}
               className={`${CAMPO_INPUT} disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-50 dark:disabled:bg-slate-900/30`}
             />

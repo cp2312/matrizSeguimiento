@@ -76,8 +76,11 @@ export const PIPELINE_TEMPLATE: BlockDef[] = [
         secondCommentLabel: 'Porcentaje de IA',
       },
       {
+        // Igual que reporte_turnitin: repetible a nivel de paso, para cuando
+        // hace falta otra ronda de ajustes con el experto.
         key: 'envio_ajustes_experto',
         label: 'Envío para ajustes de experto',
+        repeatable: { max: 3, itemLabel: 'Envío para ajustes de experto' },
         hasComment: true,
         hasDueDate: true,
         // La fecha límite no se escribe a mano: sale sola de la fecha de envío + 4
@@ -86,14 +89,20 @@ export const PIPELINE_TEMPLATE: BlockDef[] = [
         autoDueDate: { businessDays: 4, referenceLabel: 'Fecha de envío al experto' },
       },
       { key: 'recepcion_ajustes', label: 'Recepción ajustes', hasComment: true },
-      { key: 'revision_par_disciplinar', label: 'Revisión par disciplinar', hasComment: true },
+      {
+        key: 'revision_par_disciplinar',
+        label: 'Revisión par disciplinar',
+        hasComment: true,
+        hasSecondComment: true,
+        secondCommentLabel: 'Comentario adicional',
+      },
       {
         // Igual que reporte_turnitin: repetible a nivel de paso, para cuando
         // hace falta una segunda pasada de corrección de estilo.
         key: 'correccion_estilo',
         label: 'Corrección de estilo',
         repeatable: { max: 2, itemLabel: 'Corrección de estilo' },
-        hasComment: false,
+        hasComment: true,
       },
       { key: 'envio_diseno_grafico', label: 'Envío a diseño gráfico', hasComment: true },
       {
