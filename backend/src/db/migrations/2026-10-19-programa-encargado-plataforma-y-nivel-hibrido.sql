@@ -1,0 +1,23 @@
+-- ============================================================================
+--  Migración: encargada de plataforma del programa + nivel académico también
+--  disponible (opcional) para programas híbridos
+--  Fecha: 2026-10-19
+--
+--  Este proyecto no tiene un runner de migraciones -- schema.sql se aplica
+--  completo sobre una base vacía. Este archivo es para bases YA existentes.
+--
+--  Qué hace:
+--    - Agrega a programs el nombre (texto libre) de la persona de
+--      tecnopedagogía encargada de la plataforma de ese programa. Sin
+--      relación con la tabla de usuarios ni con el sistema de encargados por
+--      categoría -- no dispara avisos por correo.
+--    - academic_level (pregrado/posgrado) ya existía para programas
+--      virtuales (ver 2026-09-07-programa-virtual-nivel.sql); ahora el
+--      frontend/backend también lo admiten (opcional) para 'hibrido'. La
+--      columna ya soportaba cualquier valor del enum -- este archivo no
+--      necesita tocarla, solo documenta el cambio de validación.
+--
+--  Seguro de correr más de una vez (IF NOT EXISTS).
+-- ============================================================================
+
+ALTER TABLE programs ADD COLUMN IF NOT EXISTS platform_owner TEXT;

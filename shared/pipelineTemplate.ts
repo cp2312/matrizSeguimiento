@@ -64,11 +64,16 @@ export const PIPELINE_TEMPLATE: BlockDef[] = [
       {
         // Reintentos: si el porcentaje sale muy alto a veces hay que repetir la
         // prueba. `repeatable` aqui (a nivel de paso, no de bloque) hace que
-        // este paso puntual genere hasta 3 intentos SIN sacar el resto de
+        // este paso puntual genere varios intentos SIN sacar el resto de
         // "Libro" de su sitio -- todo sigue viviendo en el mismo apartado.
+        // max en 50 en vez de literal "sin tope": pasosVisibles oculta los
+        // cupos vacíos (solo se ven/cuentan los que ya tienen datos), así que
+        // un tope alto no tiene costo real y se siente ilimitado en la
+        // práctica -- un max literalmente infinito rompería el bucle que
+        // arma las rutas posibles en buildStepPaths.
         key: 'reporte_turnitin',
         label: 'Reporte Turnitin',
-        repeatable: { max: 3, itemLabel: 'Reporte Turnitin' },
+        repeatable: { max: 50, itemLabel: 'Reporte Turnitin' },
         hasComment: true,
         commentRequired: true,
         commentLabel: 'Porcentaje de Turnitin',
@@ -377,7 +382,13 @@ export const PIPELINE_TEMPLATE: BlockDef[] = [
     label: 'Guía',
     repeatable: { max: 5, perCredit: true, itemLabel: 'Guía', extensible: true },
     steps: [
-      { key: 'recepcion_experto', label: 'Recepción por experto', hasComment: false },
+      {
+        key: 'recepcion_experto',
+        label: 'Recepción por experto',
+        hasComment: false,
+        hasDueDate: true,
+        dueDateLabel: 'Fecha de asignación',
+      },
       { key: 'paso_diseno_grafico', label: 'Paso a diseño gráfico', hasComment: false },
       { key: 'hay_ajustes', label: '¿Hay ajustes?', hasComment: false, isBranchPoint: true },
       {

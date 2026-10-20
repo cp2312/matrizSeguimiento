@@ -143,11 +143,23 @@ export interface Program {
   name: string;
   notes: string | null;
   type: ProgramType;
-  /** pregrado o posgrado -- solo aplica cuando type es 'virtual'; null en los demás */
+  /** pregrado o posgrado -- obligatorio si type es 'virtual', opcional si es
+   *  'hibrido'; null en 'presencial' */
   academic_level: ProgramLevel | null;
   /** semestre estimado de apertura, formato 'AAAA-1' / 'AAAA-2' -- opcional,
    *  se usa para priorizar el plan de virtualización (ver GET /dashboard) */
   fecha_apertura: string | null;
+  /** nombre de la persona de tecnopedagogía encargada de la plataforma de
+   *  este programa -- texto libre, sin relación con la tabla de usuarios ni
+   *  con el sistema de encargados por categoría (no dispara avisos por correo) */
+  platform_owner: string | null;
+  /** número/estado del registro calificado del programa, si ya lo tiene -- texto libre */
+  registro_calificado: string | null;
+  /** checklist de particularidades del programa frente al proceso estándar
+   *  -- cada una independiente de las demás (ver ListadoProgramas.tsx) */
+  sin_porcentaje_guias: boolean;
+  sin_actividades_colaborativas: boolean;
+  una_actividad_por_seccion: boolean;
   archived: boolean;
   created_at: string;
   updated_at: string;

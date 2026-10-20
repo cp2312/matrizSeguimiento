@@ -165,6 +165,36 @@ export default function Programa() {
         </Boton>
       </TituloPagina>
 
+      {programa && (
+        programa.registro_calificado
+        || programa.sin_porcentaje_guias
+        || programa.sin_actividades_colaborativas
+        || programa.una_actividad_por_seccion
+      ) && (
+        <div className="flex flex-wrap items-center gap-2 mb-4 -mt-2">
+          {programa.registro_calificado && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-100 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 px-2.5 py-1 text-[12px] font-medium">
+              Registro calificado: {programa.registro_calificado}
+            </span>
+          )}
+          {programa.sin_porcentaje_guias && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2.5 py-1 text-[12px] font-medium">
+              Sin porcentaje de guías
+            </span>
+          )}
+          {programa.sin_actividades_colaborativas && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2.5 py-1 text-[12px] font-medium">
+              Sin Actividades Colaborativas
+            </span>
+          )}
+          {programa.una_actividad_por_seccion && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2.5 py-1 text-[12px] font-medium">
+              1 Actividad por Sección
+            </span>
+          )}
+        </div>
+      )}
+
       {cargando && <Cargando />}
 
       {error && <Alerta>{error}</Alerta>}

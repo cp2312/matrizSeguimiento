@@ -143,15 +143,30 @@ CREATE TABLE programs (
   name       TEXT        NOT NULL,
   notes      TEXT,
   type       program_type NOT NULL DEFAULT 'presencial',
-  -- Pregrado o posgrado -- solo aplica cuando type es 'virtual'. Se valida en
-  -- el backend (routes/programs.ts), no con un CHECK, para no romper
-  -- programas virtuales ya existentes al agregar esta columna.
+  -- Pregrado o posgrado -- aplica cuando type es 'virtual' (obligatorio) o
+  -- 'hibrido' (opcional); en 'presencial' queda en null. Se valida en el
+  -- backend (routes/programs.ts), no con un CHECK, para no romper programas
+  -- ya existentes al agregar esta columna.
   academic_level program_level,
   -- Semestre estimado en el que el programa abre/entra en oferta, formato
   -- 'AAAA-1' o 'AAAA-2' (igual de espiritu que subjects.semester, pero a
   -- nivel de programa). Opcional -- se usa para priorizar el plan de
   -- virtualizacion (ver GET /dashboard), no todos los programas lo tienen.
   fecha_apertura TEXT,
+  -- Nombre de la persona de tecnopedagogía encargada de la plataforma de
+  -- este programa -- texto libre, sin relación con la tabla de usuarios ni
+  -- con el sistema de encargados por categoría (no dispara avisos por correo).
+  platform_owner TEXT,
+  -- Número/estado del registro calificado del programa, si ya lo tiene --
+  -- texto libre, opcional (no todos los programas lo tienen todavía).
+  registro_calificado TEXT,
+  -- Casillero de particularidades del programa frente al proceso estándar --
+  -- cada una independiente de las demás. Antes vivían como texto suelto
+  -- dentro de "notes"; pasan a columnas propias para poder mostrarlas como
+  -- insignia en vez de tener que leer la nota completa.
+  sin_porcentaje_guias BOOLEAN NOT NULL DEFAULT FALSE,
+  sin_actividades_colaborativas BOOLEAN NOT NULL DEFAULT FALSE,
+  una_actividad_por_seccion BOOLEAN NOT NULL DEFAULT FALSE,
   archived   BOOLEAN     NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),

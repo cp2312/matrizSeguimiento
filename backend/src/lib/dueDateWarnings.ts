@@ -13,6 +13,7 @@ const CATEGORIA_POR_BLOQUE: Record<string, string> = {
   video_contenido: 'video_contenido',
   cuestionario_final: 'cuestionario_final',
   libro: 'libro',
+  guias: 'guias',
 };
 
 interface CeldaPorVencer {
@@ -35,10 +36,10 @@ function diasHasta(dueDate: string): number {
  * Revisa todos los pasos con fecha límite (Podcast: "Creación de guión";
  * Video de contenido: "Creación de guión", solo cuando lo graba el profesor
  * -- ver pasoPideFechaLimite; Cuestionario final: "Recepción por experto";
- * Libro: "Envío para ajustes de experto") que están por vencer (o ya
- * vencieron), todavía no están en 'terminado' y a los que no se les avisó, y
- * le avisa por correo al encargado de esa categoría. Se corre
- * periódicamente (ver index.ts) -- nunca lanza.
+ * Libro: "Envío para ajustes de experto"; Guía: "Recepción por experto") que
+ * están por vencer (o ya vencieron), todavía no están en 'terminado' y a los
+ * que no se les avisó, y le avisa por correo al encargado de esa categoría.
+ * Se corre periódicamente (ver index.ts) -- nunca lanza.
  */
 export async function revisarFechasLimite(): Promise<void> {
   try {

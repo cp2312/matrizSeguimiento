@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useFetch } from '../hooks/useFetch';
 import { Layout } from '../components/Layout';
 import { Alerta } from '../components/ui/Alerta';
@@ -370,6 +370,48 @@ function EjeAvance() {
   );
 }
 
+// ---------------------------------------------------------------------------
+//  Pestañas del dashboard -- separa el "pulso" del día a día (General) de los
+//  desgloses de avance (Avance) y del plan de virtualización (Virtualización),
+//  que antes vivían todos apilados en una sola página larguísima. El tab
+//  activo vive en la URL (?tab=) para que se pueda recargar o compartir el
+//  link directo a una pestaña puntual -- 'general' es el default y no deja
+//  rastro en la URL.
+// ---------------------------------------------------------------------------
+type TabDashboard = 'general' | 'avance' | 'virtualizacion';
+
+const PESTANAS_DASHBOARD: { valor: TabDashboard; etiqueta: string; icon: IconoComponente }[] = [
+  { valor: 'general', etiqueta: 'General', icon: IconoTendencia },
+  { valor: 'avance', etiqueta: 'Avance', icon: IconoCapas },
+  { valor: 'virtualizacion', etiqueta: 'Virtualización', icon: IconoIntercambio },
+];
+
+function TabsDashboard({ activa, onCambiar }: { activa: TabDashboard; onCambiar: (t: TabDashboard) => void }) {
+  return (
+    <div className="flex items-center gap-1 border-b border-slate-200 dark:border-slate-800 mb-6">
+      {PESTANAS_DASHBOARD.map((p) => {
+        const esActiva = p.valor === activa;
+        return (
+          <button
+            key={p.valor}
+            type="button"
+            onClick={() => onCambiar(p.valor)}
+            className={`relative flex items-center gap-1.5 px-3.5 py-2.5 text-[13px] font-medium transition-colors ${
+              esActiva
+                ? 'text-slate-900 dark:text-slate-100'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+            }`}
+          >
+            <p.icon className="w-4 h-4" />
+            {p.etiqueta}
+            {esActiva && <span className="absolute left-0 right-0 -bottom-px h-0.5 rounded-full bg-marca-500 dark:bg-marca-400" />}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /** Pastilla de filtro -- mismo patrón visual ya usado en Programas
  *  (ver ListadoProgramas.tsx), repetido aquí en vez de compartido porque no
  *  está exportado de allá. */
@@ -443,6 +485,178 @@ function PorEstado({ porEstado }: { porEstado: Record<CellStatus, number> }) {
     </div>
   );
 }
+
+/** Barra de composición genérica -- mismo patrón visual que PorEstado (franja
+ *  apilada por proporción + leyenda con conteos), pero para cualquier reparto
+ *  de un total en categorías propias con su color (tipo de programa, estado
+ *  de virtualización...), no solo CellStatus. Los colores vienen ya resueltos
+ *  (hex) y pasaron el validador de paletas de la skill de dataviz -- ver
+ *  COLOR_TIPO / COLOR_VIRTUALIZACION más abajo para el porqué de cada uno. */
+function BarraComposicion({
+  segmentos,
+}: { segmentos: { key: string; label: string; cantidad: number; color: string }[] }) {
+  const total = segmentos.reduce((acc, s) => acc + s.cantidad, 0);
+  const conPct = segmentos
+    .map((s) => ({ ...s, pct: total ? (s.cantidad / total) * 100 : 0 }))
+    .filter((s) => s.cantidad > 0);
+
+  const listo = useListoParaAnimar(total);
+
+  if (total === 0) {
+    return <p className="text-[12px] text-slate-400 dark:text-slate-500">Sin datos para mostrar.</p>;
+  }
+
+  return (
+    <div>
+      <div className="flex h-6 w-full rounded-full overflow-hidden gap-[2px] bg-slate-100 dark:bg-slate-800">
+        {conPct.map((s) => (
+          <div
+            key={s.key}
+            className="h-full flex items-center justify-center overflow-hidden transition-[width] duration-700 ease-out"
+            style={{ width: `${listo ? s.pct : 0}%`, background: s.color }}
+            title={`${s.label}: ${s.cantidad} (${Math.round(s.pct)}%)`}
+          >
+            {s.pct >= 8 && (
+              <span className="text-[10px] font-semibold px-1 text-white drop-shadow-sm">
+                {Math.round(s.pct)}%
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-3">
+        {conPct.map((s) => (
+          <span key={s.key} className="inline-flex items-center gap-1.5 text-[12px] text-slate-600 dark:text-slate-300">
+            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: s.color }} />
+            {s.label} <span className="text-slate-400 dark:text-slate-500">({s.cantidad})</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Dona de composición -- mismo dato que BarraComposicion (reparto de un
+ *  total en categorías con color propio), pero como anillo en vez de franja,
+ *  a juego con AnilloAvance. Mismo truco de stroke-dasharray/offset que
+ *  AnilloAvance, repetido por cada gajo con un hueco fijo entre ellos (ver
+ *  marks-and-anatomy.md de la skill dataviz: "2px surface gap" entre marcas
+ *  que se tocan). El número del centro es el total, no un porcentaje --
+ *  por eso no hay "%" junto a él, a diferencia de AnilloAvance. */
+function DonaComposicion({
+  segmentos, centroEtiqueta,
+}: { segmentos: { key: string; label: string; cantidad: number; color: string }[]; centroEtiqueta?: string }) {
+  const total = segmentos.reduce((acc, s) => acc + s.cantidad, 0);
+  const conPct = segmentos
+    .map((s) => ({ ...s, pct: total ? (s.cantidad / total) * 100 : 0 }))
+    .filter((s) => s.cantidad > 0);
+
+  const totalMostrado = useConteo(total, 900);
+  const listo = useListoParaAnimar(total);
+
+  if (total === 0) {
+    return <p className="text-[12px] text-slate-400 dark:text-slate-500">Sin datos para mostrar.</p>;
+  }
+
+  const r = 42;
+  const strokeWidth = 12;
+  const c = 2 * Math.PI * r;
+  const hueco = 3; // separación fija entre gajos, en px de circunferencia
+  let acumulado = 0;
+  const gajos = conPct.map((s) => {
+    const largoTotal = (s.pct / 100) * c;
+    const gajo = { ...s, largo: Math.max(0, largoTotal - hueco), offset: acumulado };
+    acumulado += largoTotal;
+    return gajo;
+  });
+
+  return (
+    <div className="flex items-center gap-6 flex-wrap">
+      <div className="relative shrink-0" style={{ width: 152, height: 152 }}>
+        <svg viewBox="0 0 112 112" className="w-full h-full -rotate-90">
+          <circle cx="56" cy="56" r={r} strokeWidth={strokeWidth} fill="none" className="stroke-slate-100 dark:stroke-slate-800" />
+          {gajos.map((g) => (
+            <circle
+              key={g.key}
+              cx="56" cy="56" r={r} strokeWidth={strokeWidth} fill="none"
+              stroke={g.color}
+              strokeDasharray={`${listo ? g.largo : 0} ${c}`}
+              strokeDashoffset={-g.offset}
+              className="transition-[stroke-dasharray] duration-700 ease-out"
+            >
+              <title>{`${g.label}: ${g.cantidad} (${Math.round(g.pct)}%)`}</title>
+            </circle>
+          ))}
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+          <span className="text-[20px] font-bold text-slate-900 dark:text-slate-100 tracking-tight tabular-nums">
+            {totalMostrado}
+          </span>
+          {/* El hueco interior (radio - mitad del grosor del trazo) deja espacio real
+             -- el ancho de abajo se calcula a partir de eso para que el texto nunca
+             pise el anillo, en vez de confiar en que "ya entra" (ver
+             marks-and-anatomy.md de la skill dataviz: "mide primero"). */}
+          {centroEtiqueta && (
+            <span
+              className="text-[9px] leading-tight text-slate-400 dark:text-slate-500"
+              style={{ maxWidth: `${((r - strokeWidth / 2) * 2 * 152) / 112 - 12}px` }}
+            >
+              {centroEtiqueta}
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-1.5 min-w-0">
+        {conPct.map((s) => (
+          <span key={s.key} className="inline-flex items-center gap-1.5 text-[12px] text-slate-600 dark:text-slate-300">
+            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: s.color }} />
+            {s.label}{' '}
+            <span className="text-slate-400 dark:text-slate-500">({s.cantidad} · {Math.round(s.pct)}%)</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Colores de "Programas por tipo" (ver BarraComposicion) -- NO son los
+ *  mismos hex que TIPOS_PROGRAMA (lib/tiposPrograma.ts): ese color se usa
+ *  como texto/ícono/badge en toda la app, pero acá el color ES la lectura
+ *  principal del gráfico, así que pasa por un estándar más exigente (debe
+ *  distinguirse incluso para daltonismo). "virtual" pasa a un cian un paso
+ *  más oscuro (#0891B2 en vez de #06B6D4) porque el original no pasaba el
+ *  validador en modo oscuro; "híbrido" (que en el resto de la app se pinta
+ *  partido mitad-mitad, sin un solo color propio) necesita uno nuevo para
+ *  este gráfico. Validado con scripts/validate_palette.js de la skill
+ *  dataviz, luz y oscuro, contra blanco/slate-900. */
+const COLOR_TIPO: Record<ProgramType, string> = {
+  presencial: '#2563EB',
+  virtual: '#0891B2',
+  hibrido: '#7C3AED',
+};
+
+/** Mismos tres colores que COLOR_TIPO, pero como clase de Tailwind -- para
+ *  BarraAvance/FilaAvance, que pintan con className en vez de style inline.
+ *  blue-600/cyan-600/violet-600 son exactamente esos hex en la paleta por
+ *  defecto de Tailwind, así que es el mismo color, no una aproximación. */
+const COLOR_TIPO_CLASE: Record<ProgramType, string> = {
+  presencial: 'bg-blue-600',
+  virtual: 'bg-cyan-600',
+  hibrido: 'bg-violet-600',
+};
+
+/** Colores de la composición de espacios académicos en Virtualización (ver
+ *  BarraComposicion). "Proyectados" queda deliberadamente gris/apagado en
+ *  vez de un color saturado -- mismo criterio que ya usa ESTADOS.vacio para
+ *  "Sin iniciar": es el estado menos urgente, se identifica por su etiqueta
+ *  directa, no necesita competir visualmente con los otros dos. */
+const COLOR_VIRTUALIZACION = {
+  virtualizado: '#059669',
+  enProceso: '#D97706',
+  proyectado: '#64748B',
+};
 
 /** Redondea `valor` hacia arriba a un número "lindo" (1/2/2.5/5/10 × 10^n),
  *  para que las líneas de la grilla del gráfico queden en números redondos. */
@@ -630,7 +844,7 @@ function PlanVirtualizacion({ datos }: { datos: VirtualizacionResumen }) {
 
   return (
     <div className="space-y-4">
-      <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 animar-entrada" style={{ animationDelay: '500ms' }}>
+      <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 animar-entrada" style={{ animationDelay: '0ms' }}>
         <TituloSeccion
           icon={IconoAlerta}
           color="amber"
@@ -659,21 +873,29 @@ function PlanVirtualizacion({ datos }: { datos: VirtualizacionResumen }) {
         )}
       </section>
 
-      <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 animar-entrada" style={{ animationDelay: '550ms' }}>
+      <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 animar-entrada" style={{ animationDelay: '60ms' }}>
         <TituloSeccion
           icon={IconoCheck}
           color="emerald"
           titulo="Espacios académicos virtualizados (100%), en proceso y proyectados"
           subtitulo={'"Virtualizado" = asignatura con el 100% de sus pasos en "Terminado"'}
         />
-        <div className="grid grid-cols-3 gap-3">
-          <StatTile etiqueta="Virtualizados (100%)" valor={espacios.virtualizados} icon={IconoCheck} color="emerald" retrasoMs={580} />
-          <StatTile etiqueta="En proceso" valor={espacios.enProceso} icon={IconoReloj} color="amber" retrasoMs={620} />
-          <StatTile etiqueta="Proyectados" valor={espacios.proyectados} icon={IconoBandera} color="slate" retrasoMs={660} />
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          <StatTile etiqueta="Virtualizados (100%)" valor={espacios.virtualizados} icon={IconoCheck} color="emerald" retrasoMs={80} />
+          <StatTile etiqueta="En proceso" valor={espacios.enProceso} icon={IconoReloj} color="amber" retrasoMs={120} />
+          <StatTile etiqueta="Proyectados" valor={espacios.proyectados} icon={IconoBandera} color="slate" retrasoMs={160} />
         </div>
+        <DonaComposicion
+          centroEtiqueta="espacios académicos"
+          segmentos={[
+            { key: 'virtualizado', label: 'Virtualizados', cantidad: espacios.virtualizados, color: COLOR_VIRTUALIZACION.virtualizado },
+            { key: 'en_proceso', label: 'En proceso', cantidad: espacios.enProceso, color: COLOR_VIRTUALIZACION.enProceso },
+            { key: 'proyectado', label: 'Proyectados', cantidad: espacios.proyectados, color: COLOR_VIRTUALIZACION.proyectado },
+          ]}
+        />
       </section>
 
-      <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 animar-entrada" style={{ animationDelay: '600ms' }}>
+      <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 animar-entrada" style={{ animationDelay: '120ms' }}>
         <TituloSeccion
           icon={IconoTendencia}
           color="emerald"
@@ -688,7 +910,7 @@ function PlanVirtualizacion({ datos }: { datos: VirtualizacionResumen }) {
         </div>
       </section>
 
-      <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 animar-entrada" style={{ animationDelay: '650ms' }}>
+      <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 animar-entrada" style={{ animationDelay: '180ms' }}>
         <TituloSeccion
           icon={IconoIntercambio}
           color="blue"
@@ -713,7 +935,7 @@ function PlanVirtualizacion({ datos }: { datos: VirtualizacionResumen }) {
         )}
       </section>
 
-      <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 animar-entrada" style={{ animationDelay: '700ms' }}>
+      <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 animar-entrada" style={{ animationDelay: '240ms' }}>
         <TituloSeccion
           icon={IconoAlerta}
           color="rose"
@@ -745,7 +967,7 @@ function PlanVirtualizacion({ datos }: { datos: VirtualizacionResumen }) {
         )}
       </section>
 
-      <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 animar-entrada" style={{ animationDelay: '750ms' }}>
+      <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 animar-entrada" style={{ animationDelay: '300ms' }}>
         <TituloSeccion
           icon={IconoCalendario}
           color="fuchsia"
@@ -794,8 +1016,33 @@ export default function Dashboard() {
   // poder enfocarse en un tipo sin perder de vista el resto del dashboard.
   const [filtroTipo, setFiltroTipo] = useState<ProgramType | null>(null);
 
+  // Pestaña activa en la URL (?tab=avance / ?tab=virtualizacion) -- 'general'
+  // es el default y no deja rastro en la URL (ver TabsDashboard más arriba).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const tab: TabDashboard = tabParam === 'avance' || tabParam === 'virtualizacion' ? tabParam : 'general';
+  function irATab(t: TabDashboard) {
+    setSearchParams(t === 'general' ? {} : { tab: t }, { replace: true });
+  }
+
   const porProgramaFiltrado = datos
     ? (filtroTipo ? datos.porPrograma.filter((p) => p.type === filtroTipo) : datos.porPrograma)
+    : [];
+
+  // Resumen rápido para comparar de un vistazo, antes de bajar a la lista
+  // completa de "Avance por programa" -- promedio de avance de los programas
+  // de cada tipo (no cuenta los tipos sin ningún programa).
+  const promedioPorTipo = datos
+    ? ORDEN_TIPOS
+        .map((t) => {
+          const delTipo = datos.porPrograma.filter((p) => p.type === t);
+          const promedio = delTipo.length
+            ? Math.round(delTipo.reduce((acc, p) => acc + p.porcentaje, 0) / delTipo.length)
+            : 0;
+          return { tipo: t, promedio, cantidad: delTipo.length };
+        })
+        .filter((r) => r.cantidad > 0)
+        .sort((a, b) => a.promedio - b.promedio)
     : [];
 
   return (
@@ -822,134 +1069,163 @@ export default function Dashboard() {
       )}
 
       {datos && datos.asignaturas.total > 0 && (
-        <div className="space-y-6">
-          <div className="grid sm:grid-cols-2 lg:grid-cols-[minmax(260px,1.4fr)_repeat(4,1fr)] gap-3">
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl px-6 py-5 flex items-center gap-5 animar-entrada transition-shadow hover:shadow-md" style={{ animationDelay: '0ms' }}>
-              <AnilloAvance porcentaje={datos.avanceGlobal.porcentaje} />
-              <div className="min-w-0">
-                <p className="text-[12px] text-slate-500 dark:text-slate-400">Avance global</p>
-                <p className="mt-1 text-[13px] font-medium text-slate-700 dark:text-slate-200">
-                  {datos.avanceGlobal.terminados} de {datos.avanceGlobal.total}
-                </p>
-                <p className="text-[11px] text-slate-400 dark:text-slate-500">pasos terminados</p>
+        <>
+          <TabsDashboard activa={tab} onCambiar={irATab} />
+
+          {tab === 'general' && (
+            <div className="space-y-6">
+              <div className="grid sm:grid-cols-2 lg:grid-cols-[minmax(260px,1.4fr)_repeat(4,1fr)] gap-3">
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl px-6 py-5 flex items-center gap-5 animar-entrada transition-shadow hover:shadow-md" style={{ animationDelay: '0ms' }}>
+                  <AnilloAvance porcentaje={datos.avanceGlobal.porcentaje} />
+                  <div className="min-w-0">
+                    <p className="text-[12px] text-slate-500 dark:text-slate-400">Avance global</p>
+                    <p className="mt-1 text-[13px] font-medium text-slate-700 dark:text-slate-200">
+                      {datos.avanceGlobal.terminados} de {datos.avanceGlobal.total}
+                    </p>
+                    <p className="text-[11px] text-slate-400 dark:text-slate-500">pasos terminados</p>
+                  </div>
+                </div>
+
+                <StatTile etiqueta="Programas activos" valor={datos.programas.total} icon={IconoPrograma} color="blue" retrasoMs={60} />
+                <StatTile etiqueta="Asignaturas activas" valor={datos.asignaturas.total} icon={IconoAsignatura} color="violet" retrasoMs={120} />
+                <StatTile etiqueta="Docentes asignados" valor={datos.docentes.total} icon={IconoDocente} color="teal" retrasoMs={180} />
+                <StatTile etiqueta="Apartados bloqueados" valor={datos.bloqueados} icon={IconoCandado} color="amber" retrasoMs={240} />
               </div>
+
+              <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 animar-entrada" style={{ animationDelay: '280ms' }}>
+                <TituloSeccion
+                  icon={IconoCampana}
+                  color="rose"
+                  titulo={<>Alertas {datos.alertas.length > 0 && `(${datos.alertas.length})`}</>}
+                  subtitulo="Fechas límite (7 días), contratos (15 días) y entregas de libro por vencer o ya vencidos"
+                />
+                <Alertas alertas={datos.alertas} />
+              </section>
+
+              <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 animar-entrada" style={{ animationDelay: '320ms' }}>
+                <TituloSeccion icon={IconoPrograma} color="blue" titulo="Programas por tipo" />
+                <BarraComposicion
+                  segmentos={ORDEN_TIPOS.map((t) => ({
+                    key: t,
+                    label: ETIQUETA_TIPO[t],
+                    cantidad: datos.programas.porTipo[t],
+                    color: COLOR_TIPO[t],
+                  }))}
+                />
+              </section>
+
+              <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 animar-entrada" style={{ animationDelay: '360ms' }}>
+                <TituloSeccion icon={IconoTendencia} color="cyan" titulo="Pasos terminados por semana" subtitulo="Últimas 8 semanas" />
+                <GraficoTendencia datos={datos.tendenciaSemanal} />
+              </section>
             </div>
+          )}
 
-            <StatTile etiqueta="Programas activos" valor={datos.programas.total} icon={IconoPrograma} color="blue" retrasoMs={60} />
-            <StatTile etiqueta="Asignaturas activas" valor={datos.asignaturas.total} icon={IconoAsignatura} color="violet" retrasoMs={120} />
-            <StatTile etiqueta="Docentes asignados" valor={datos.docentes.total} icon={IconoDocente} color="teal" retrasoMs={180} />
-            <StatTile etiqueta="Apartados bloqueados" valor={datos.bloqueados} icon={IconoCandado} color="amber" retrasoMs={240} />
-          </div>
+          {tab === 'avance' && (
+            <div className="space-y-6">
+              <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 animar-entrada" style={{ animationDelay: '0ms' }}>
+                <TituloSeccion icon={IconoPastel} color="indigo" titulo="Avance por estado" />
+                <PorEstado porEstado={datos.porEstado} />
+              </section>
 
-          <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 animar-entrada" style={{ animationDelay: '280ms' }}>
-            <TituloSeccion
-              icon={IconoCampana}
-              color="rose"
-              titulo={<>Alertas {datos.alertas.length > 0 && `(${datos.alertas.length})`}</>}
-              subtitulo="Fechas límite (7 días), contratos (15 días) y entregas de libro por vencer o ya vencidos"
-            />
-            <Alertas alertas={datos.alertas} />
-          </section>
-
-          <div className="flex flex-wrap items-center gap-2 animar-entrada" style={{ animationDelay: '320ms' }}>
-            {(Object.entries(datos.programas.porTipo) as [ProgramType, number][])
-              .filter(([, n]) => n > 0)
-              .map(([tipo, n]) => (
-                <span
-                  key={tipo}
-                  className="text-[12px] px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
-                >
-                  {ETIQUETA_TIPO[tipo]}: <strong className="text-slate-800 dark:text-slate-100">{n}</strong>
-                </span>
-              ))}
-          </div>
-
-          <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 animar-entrada" style={{ animationDelay: '360ms' }}>
-            <TituloSeccion icon={IconoTendencia} color="cyan" titulo="Pasos terminados por semana" subtitulo="Últimas 8 semanas" />
-            <GraficoTendencia datos={datos.tendenciaSemanal} />
-          </section>
-
-          <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 animar-entrada" style={{ animationDelay: '400ms' }}>
-            <TituloSeccion icon={IconoPastel} color="indigo" titulo="Avance por estado" />
-            <PorEstado porEstado={datos.porEstado} />
-          </section>
-
-          <div className="grid lg:grid-cols-2 gap-4">
-            <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 animar-entrada" style={{ animationDelay: '440ms' }}>
-              <TituloSeccion
-                icon={IconoCapas}
-                color="sky"
-                titulo="Avance por apartado"
-                subtitulo="De menor a mayor avance, para ver primero lo más atrasado"
-              />
-              <EjeAvance />
-              <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                {datos.porApartado.map((b) => (
-                  <FilaAvance
-                    key={b.blockKey}
-                    etiqueta={b.label}
-                    detalle={`${b.terminados} de ${b.total}`}
-                    porcentaje={b.porcentaje}
-                    color="bg-sky-500 dark:bg-sky-400"
+              <div className="grid lg:grid-cols-2 gap-4">
+                <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 animar-entrada" style={{ animationDelay: '60ms' }}>
+                  <TituloSeccion
+                    icon={IconoCapas}
+                    color="sky"
+                    titulo="Avance por apartado"
+                    subtitulo="De menor a mayor avance, para ver primero lo más atrasado"
                   />
-                ))}
-              </div>
-            </section>
+                  <EjeAvance />
+                  <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {datos.porApartado.map((b) => (
+                      <FilaAvance
+                        key={b.blockKey}
+                        etiqueta={b.label}
+                        detalle={`${b.terminados} de ${b.total}`}
+                        porcentaje={b.porcentaje}
+                        color="bg-sky-500 dark:bg-sky-400"
+                      />
+                    ))}
+                  </div>
+                </section>
 
-            <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 animar-entrada" style={{ animationDelay: '480ms' }}>
-              <TituloSeccion icon={IconoPrograma} color="blue" titulo="Avance por programa" subtitulo="De menor a mayor avance" />
-              <div className="flex flex-wrap items-center gap-1 mb-3 -mt-1">
-                <FiltroPildora activo={filtroTipo === null} onClick={() => setFiltroTipo(null)}>Todos</FiltroPildora>
-                {ORDEN_TIPOS.map((t) => (
-                  <FiltroPildora key={t} activo={filtroTipo === t} onClick={() => setFiltroTipo(t)}>
-                    {ETIQUETA_TIPO[t]}
-                  </FiltroPildora>
-                ))}
+                <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 animar-entrada" style={{ animationDelay: '120ms' }}>
+                  <TituloSeccion icon={IconoPrograma} color="blue" titulo="Avance por programa" subtitulo="De menor a mayor avance" />
+
+                  {promedioPorTipo.length > 1 && (
+                    <div className="mb-4 pb-4 border-b border-slate-100 dark:border-slate-800">
+                      <p className="text-[11px] font-medium uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1.5">
+                        Promedio por tipo
+                      </p>
+                      <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {promedioPorTipo.map((r) => (
+                          <FilaAvance
+                            key={r.tipo}
+                            etiqueta={ETIQUETA_TIPO[r.tipo]}
+                            detalle={`${r.cantidad} ${r.cantidad === 1 ? 'programa' : 'programas'}`}
+                            porcentaje={r.promedio}
+                            color={COLOR_TIPO_CLASE[r.tipo]}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap items-center gap-1 mb-3 -mt-1">
+                    <FiltroPildora activo={filtroTipo === null} onClick={() => setFiltroTipo(null)}>Todos</FiltroPildora>
+                    {ORDEN_TIPOS.map((t) => (
+                      <FiltroPildora key={t} activo={filtroTipo === t} onClick={() => setFiltroTipo(t)}>
+                        {ETIQUETA_TIPO[t]}
+                      </FiltroPildora>
+                    ))}
+                  </div>
+                  <EjeAvance />
+                  {porProgramaFiltrado.length === 0 ? (
+                    <p className="text-[12px] text-slate-400 dark:text-slate-500">Ningún programa de este tipo.</p>
+                  ) : (
+                    <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {porProgramaFiltrado.map((p) => (
+                        <FilaAvance
+                          key={p.id}
+                          etiqueta={p.name}
+                          detalle={`${ETIQUETA_TIPO[p.type]} · ${p.asignaturas} ${p.asignaturas === 1 ? 'asignatura' : 'asignaturas'}`}
+                          porcentaje={p.porcentaje}
+                          to={`/programas/${p.id}`}
+                          color="bg-blue-500 dark:bg-blue-400"
+                        />
+                      ))}
+                    </div>
+                  )}
+                </section>
               </div>
-              <EjeAvance />
-              {porProgramaFiltrado.length === 0 ? (
-                <p className="text-[12px] text-slate-400 dark:text-slate-500">Ningún programa de este tipo.</p>
-              ) : (
+
+              <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 animar-entrada" style={{ animationDelay: '180ms' }}>
+                <TituloSeccion
+                  icon={IconoBandera}
+                  color="rose"
+                  titulo="Asignaturas más atrasadas"
+                  subtitulo={`Las ${datos.asignaturasMasAtrasadas.length} con menor avance de toda la app`}
+                />
+                <EjeAvance />
                 <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {porProgramaFiltrado.map((p) => (
+                  {datos.asignaturasMasAtrasadas.map((a) => (
                     <FilaAvance
-                      key={p.id}
-                      etiqueta={p.name}
-                      detalle={`${ETIQUETA_TIPO[p.type]} · ${p.asignaturas} ${p.asignaturas === 1 ? 'asignatura' : 'asignaturas'}`}
-                      porcentaje={p.porcentaje}
-                      to={`/programas/${p.id}`}
-                      color="bg-blue-500 dark:bg-blue-400"
+                      key={a.id}
+                      etiqueta={a.name}
+                      detalle={`${a.programName} · ${a.terminados} de ${a.total}`}
+                      porcentaje={a.porcentaje}
+                      to={`/asignaturas/${a.id}`}
+                      color="bg-rose-500 dark:bg-rose-400"
                     />
                   ))}
                 </div>
-              )}
-            </section>
-          </div>
-
-          <PlanVirtualizacion datos={datos.virtualizacion} />
-
-          <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 animar-entrada" style={{ animationDelay: '800ms' }}>
-            <TituloSeccion
-              icon={IconoBandera}
-              color="rose"
-              titulo="Asignaturas más atrasadas"
-              subtitulo={`Las ${datos.asignaturasMasAtrasadas.length} con menor avance de toda la app`}
-            />
-            <EjeAvance />
-            <div className="divide-y divide-slate-100 dark:divide-slate-800">
-              {datos.asignaturasMasAtrasadas.map((a) => (
-                <FilaAvance
-                  key={a.id}
-                  etiqueta={a.name}
-                  detalle={`${a.programName} · ${a.terminados} de ${a.total}`}
-                  porcentaje={a.porcentaje}
-                  to={`/asignaturas/${a.id}`}
-                  color="bg-rose-500 dark:bg-rose-400"
-                />
-              ))}
+              </section>
             </div>
-          </section>
-        </div>
+          )}
+
+          {tab === 'virtualizacion' && <PlanVirtualizacion datos={datos.virtualizacion} />}
+        </>
       )}
     </Layout>
   );

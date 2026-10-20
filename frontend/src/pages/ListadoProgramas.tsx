@@ -8,6 +8,7 @@ import { Boton } from '../components/ui/Boton';
 import { Campo } from '../components/ui/Campo';
 import { AreaTexto } from '../components/ui/AreaTexto';
 import { Select } from '../components/ui/Select';
+import { Casilla } from '../components/ui/Casilla';
 import { Modal } from '../components/ui/Modal';
 import { ModalConfirmar } from '../components/ui/ModalConfirmar';
 import { Alerta } from '../components/ui/Alerta';
@@ -296,11 +297,16 @@ export default function ListadoProgramas() {
                         {p.notes && (
                           <p className="text-[12.5px] text-slate-400 mt-0.5 line-clamp-1">{p.notes}</p>
                         )}
+                        {p.platform_owner && (
+                          <p className="text-[12.5px] text-slate-400 mt-0.5 line-clamp-1">
+                            Encargada(o): {p.platform_owner}
+                          </p>
+                        )}
                       </td>
                       <td className="px-2 py-2">
                         <div className="flex flex-col items-start gap-1.5">
                           <TipoSwatch tipo={p.type} variante="pill" />
-                          {p.type === 'virtual' && p.academic_level && (
+                          {(p.type === 'virtual' || p.type === 'hibrido') && p.academic_level && (
                             <span className="inline-flex items-center gap-1 rounded-md bg-violet-100 dark:bg-violet-500/15
                                              text-violet-700 dark:text-violet-300 px-1.5 py-0.5 text-[12px] font-semibold">
                               <span className="w-1.5 h-1.5 rounded-full bg-violet-500 shrink-0" />
@@ -422,6 +428,11 @@ function ModalPrograma({
     // Fecha estimada de apertura ('AAAA-1'/'AAAA-2') partida en dos campos
     // para el formulario -- se combina recién al guardar (ver confirmarGuardado).
     fechaAperturaAnio: '', fechaAperturaSemestre: '' as '' | '1' | '2',
+    platformOwner: '',
+    registroCalificado: '',
+    sinPorcentajeGuias: false,
+    sinActividadesColaborativas: false,
+    unaActividadPorSeccion: false,
   };
 
   const [form, setForm] = useState(FORM_VACIO);
@@ -443,6 +454,11 @@ function ModalPrograma({
       academicLevel: programa.academic_level ?? '',
       fechaAperturaAnio: anio,
       fechaAperturaSemestre: (semestre === '1' || semestre === '2') ? semestre : '',
+      platformOwner: programa.platform_owner ?? '',
+      registroCalificado: programa.registro_calificado ?? '',
+      sinPorcentajeGuias: programa.sin_porcentaje_guias,
+      sinActividadesColaborativas: programa.sin_actividades_colaborativas,
+      unaActividadPorSeccion: programa.una_actividad_por_seccion,
     });
   }
   if (abierto && !programa && idCargado !== null) {
@@ -458,19 +474,9 @@ function ModalPrograma({
 
   function enviar(e: React.FormEvent) {
     e.preventDefault();
-
-    if (form.type === 'virtual' && !form.academicLevel) {
-      return setError('Un programa virtual debe indicar si es de pregrado o posgrado');
-    }
-
-    if (!confirmando) {
-      setError('');
-      setConfirmando(true);
-      return;
-    }
-
-    setError('');
-    setEnviando(true);
+    // La confirmación real pasa en ModalConfirmar (onConfirmar={confirmarGuardado})
+    // -- mientras está abierto, este formulario queda deshabilitado por debajo.
+    if (confirmando) return;
 
     if (form.type === 'virtual' && !form.academicLevel) {
       return setError('Un programa virtual debe indicar si es de pregrado o posgrado');
@@ -526,6 +532,43 @@ function ModalPrograma({
             value={form.notes}
             onChange={(e) => set('notes', e.target.value)}
           />
+
+          <Campo
+            etiqueta="Encargada(o) de plataforma (opcional)"
+            placeholder="Nombre de quien queda a cargo de la plataforma de este programa"
+            value={form.platformOwner}
+            onChange={(e) => set('platformOwner', e.target.value)}
+          />
+
+          <Campo
+            etiqueta="Registro calificado (opcional)"
+            placeholder="Número o estado del registro calificado, si el programa ya lo tiene"
+            value={form.registroCalificado}
+            onChange={(e) => set('registroCalificado', e.target.value)}
+          />
+        </div>
+
+        <div className="border-t border-slate-200 dark:border-slate-700 pt-5">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-3">
+            Particularidades del programa (opcional)
+          </p>
+          <div className="space-y-2.5">
+            <Casilla
+              etiqueta="Sin porcentaje de guías"
+              checked={form.sinPorcentajeGuias}
+              onChange={(e) => set('sinPorcentajeGuias', e.target.checked)}
+            />
+            <Casilla
+              etiqueta="Sin Actividades Colaborativas"
+              checked={form.sinActividadesColaborativas}
+              onChange={(e) => set('sinActividadesColaborativas', e.target.checked)}
+            />
+            <Casilla
+              etiqueta="1 Actividad por Sección"
+              checked={form.unaActividadPorSeccion}
+              onChange={(e) => set('unaActividadPorSeccion', e.target.checked)}
+            />
+          </div>
         </div>
 
         <div className="border-t border-slate-200 dark:border-slate-700 pt-5">
@@ -572,9 +615,9 @@ function ModalPrograma({
               onChange={(e) => set('type', e.target.value as ProgramType)}
             />
 
-            {form.type === 'virtual' && (
+            {(form.type === 'virtual' || form.type === 'hibrido') && (
               <Select
-                etiqueta="Nivel académico"
+                etiqueta={form.type === 'hibrido' ? 'Nivel académico (opcional)' : 'Nivel académico'}
                 opciones={[{ valor: '', etiqueta: 'Selecciona uno…' }, ...NIVELES_SELECT]}
                 value={form.academicLevel}
                 onChange={(e) => set('academicLevel', e.target.value as ProgramLevel | '')}
@@ -601,38 +644,14 @@ function ModalPrograma({
           </span>
         </div>
 
-        {form.type === 'virtual' && (
-          <Select
-            etiqueta="Nivel académico"
-            opciones={[{ valor: '', etiqueta: 'Selecciona uno…' }, ...NIVELES_SELECT]}
-            value={form.academicLevel}
-            onChange={(e) => set('academicLevel', e.target.value as ProgramLevel | '')}
-          />
-        )}
-
         <Alerta>{error}</Alerta>
 
-        {confirmando && (
-          <div className="flex items-start gap-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 px-3.5 py-3">
-            <svg className="w-4.5 h-4.5 text-slate-400 shrink-0 mt-px" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="9" />
-              <path d="M12 8h.01" />
-              <path d="M11 12h1v4h1" />
-            </svg>
-            <p className="text-[13px] text-slate-600 dark:text-slate-300 leading-snug">
-              ¿Confirmás {esEdicion ? 'guardar los cambios en' : 'crear el programa'}{' '}
-              <strong className="font-semibold">{form.name || (esEdicion ? 'este programa' : 'el nuevo programa')}</strong>?
-            </p>
-          </div>
-        )}
-
         <div className="flex gap-2 justify-end pt-1">
-          <Boton type="button" onClick={() => (confirmando ? setConfirmando(false) : onCerrar())}>
-            {confirmando ? 'Volver' : 'Cancelar'}
+          <Boton type="button" onClick={onCerrar} disabled={confirmando}>
+            Cancelar
           </Boton>
-          <Boton type="submit" variante="primario" disabled={enviando}>
-            {enviando ? 'Guardando…' : confirmando ? 'Sí, guardar' : esEdicion ? 'Guardar cambios' : 'Crear programa'}
+          <Boton type="submit" variante="primario" disabled={confirmando}>
+            {esEdicion ? 'Guardar cambios' : 'Crear programa'}
           </Boton>
         </div>
       </form>
