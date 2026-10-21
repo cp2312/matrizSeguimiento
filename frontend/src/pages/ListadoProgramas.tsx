@@ -299,7 +299,7 @@ export default function ListadoProgramas() {
                         )}
                         {p.platform_owner && (
                           <p className="text-[12.5px] text-slate-400 mt-0.5 line-clamp-1">
-                            Encargado(a): {p.platform_owner}
+                            Encargado(a) de plataforma: {p.platform_owner}
                           </p>
                         )}
                       </td>
