@@ -299,7 +299,7 @@ export default function ListadoProgramas() {
                         )}
                         {p.platform_owner && (
                           <p className="text-[12.5px] text-slate-400 mt-0.5 line-clamp-1">
-                            Encargada(o): {p.platform_owner}
+                            Encargado(a): {p.platform_owner}
                           </p>
                         )}
                       </td>
@@ -534,7 +534,7 @@ function ModalPrograma({
           />
 
           <Campo
-            etiqueta="Encargada(o) de plataforma (opcional)"
+            etiqueta="Encargado(a) de plataforma (opcional)"
             placeholder="Nombre de quien queda a cargo de la plataforma de este programa"
             value={form.platformOwner}
             onChange={(e) => set('platformOwner', e.target.value)}

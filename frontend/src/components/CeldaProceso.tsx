@@ -93,6 +93,11 @@ export function CeldaProceso({ paso, etiqueta, celda, seleccionada, onClick, blo
           {celda.comment}
         </span>
       )}
+      {celda?.second_comment && (
+        <span className="block text-[10px] mt-0.5 truncate" style={{ color: e.textoSuave }}>
+          {paso.secondCommentLabel ? `${paso.secondCommentLabel}: ${celda.second_comment}` : celda.second_comment}
+        </span>
+      )}
     </button>
   );
 }
