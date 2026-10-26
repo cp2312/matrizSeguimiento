@@ -100,6 +100,15 @@ export interface StepDef {
    * tocado a mano (ver completarPasosJuntos en matrix.ts).
    */
   autoCompletaJunto?: string[];
+  /**
+   * Este paso se puede abrir y editar aunque el paso anterior del apartado
+   * todavía no esté "terminado" -- no participa del candado de orden (ver
+   * pasoQueFalta). Para pasos donde hace falta dejar un comentario con
+   * anticipación (p. ej. "Envío a diseño gráfico" en Libro: el equipo deja
+   * ahí una nota para la jefe antes de que la revisión anterior cierre),
+   * sin que eso implique que el paso ya se hizo.
+   */
+  sinBloqueoPrevio?: boolean;
 }
 
 /** Definición de un bloque (sección) del proceso */

@@ -109,7 +109,15 @@ export const PIPELINE_TEMPLATE: BlockDef[] = [
         repeatable: { max: 2, itemLabel: 'Corrección de estilo' },
         hasComment: true,
       },
-      { key: 'envio_diseno_grafico', label: 'Envío a diseño gráfico', hasComment: true },
+      {
+        // sinBloqueoPrevio: el equipo necesita poder dejar un comentario acá
+        // para la jefe (p. ej. una indicación) antes de que "Corrección de
+        // estilo" cierre -- no espera el candado de orden de siempre.
+        key: 'envio_diseno_grafico',
+        label: 'Envío a diseño gráfico',
+        hasComment: true,
+        sinBloqueoPrevio: true,
+      },
       {
         key: 'recepcion_libro_disenado',
         label: 'Recepción de libro diseñado',
@@ -821,6 +829,11 @@ export function pasoQueFalta(
   const idx = visiblesDelApartado.findIndex((p) => p.path === path);
   if (idx <= 0) return null;
   const actual = visiblesDelApartado[idx];
+
+  // Paso marcado sinBloqueoPrevio (ver StepDef): nunca lo bloquea el anterior
+  // -- se puede dejar un comentario ahí de una vez, sin esperar a que cierre
+  // el paso de antes.
+  if (actual.step.sinBloqueoPrevio) return null;
 
   for (let j = idx - 1; j >= 0; j--) {
     const anterior = visiblesDelApartado[j];

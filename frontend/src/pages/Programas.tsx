@@ -349,7 +349,7 @@ function TarjetaAsignatura({
   onEditar: () => void;
   onEliminar: () => void;
 }) {
-  const { id, name, credits, modality, teachers, avance } = asignatura;
+  const { id, name, credits, modality, teachers, avance, book_name } = asignatura;
 
   return (
     <article className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800
@@ -383,6 +383,11 @@ function TarjetaAsignatura({
             {credits} {credits === 1 ? 'crédito' : 'créditos'}
             {teachers.length > 0 && ` · ${teachers.map((t) => t.full_name).join(', ')}`}
           </p>
+          {book_name && (
+            <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5 truncate">
+              📖 Libro: {book_name}
+            </p>
+          )}
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">
