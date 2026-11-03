@@ -93,7 +93,13 @@ export const PIPELINE_TEMPLATE: BlockDef[] = [
         // encargado de "Libro" (ver dueDateWarnings.ts).
         autoDueDate: { businessDays: 4, referenceLabel: 'Fecha de envío al experto' },
       },
-      { key: 'recepcion_ajustes', label: 'Recepción ajustes', hasComment: true },
+      {
+        key: 'recepcion_ajustes',
+        label: 'Recepción ajustes',
+        hasComment: true,
+        hasDueDate: true,
+        dueDateLabel: 'Fecha máxima de entrega',
+      },
       {
         key: 'revision_par_disciplinar',
         label: 'Revisión par disciplinar',

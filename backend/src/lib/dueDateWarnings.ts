@@ -36,7 +36,8 @@ function diasHasta(dueDate: string): number {
  * Revisa todos los pasos con fecha límite (Podcast: "Creación de guión";
  * Video de contenido: "Creación de guión", solo cuando lo graba el profesor
  * -- ver pasoPideFechaLimite; Cuestionario final: "Recepción por experto";
- * Libro: "Envío para ajustes de experto"; Guía: "Recepción por experto") que
+ * Libro: "Envío para ajustes de experto" y "Recepción ajustes"; Guía:
+ * "Recepción por experto") que
  * están por vencer (o ya vencieron), todavía no están en 'terminado' y a los
  * que no se les avisó, y le avisa por correo al encargado de esa categoría.
  * Se corre periódicamente (ver index.ts) -- nunca lanza.

@@ -8,7 +8,6 @@ import { Boton } from '../components/ui/Boton';
 import { Campo } from '../components/ui/Campo';
 import { AreaTexto } from '../components/ui/AreaTexto';
 import { Select } from '../components/ui/Select';
-import { Casilla } from '../components/ui/Casilla';
 import { Modal } from '../components/ui/Modal';
 import { ModalConfirmar } from '../components/ui/ModalConfirmar';
 import { Alerta } from '../components/ui/Alerta';
@@ -413,6 +412,12 @@ function FiltroPildora({
 const TIPOS_SELECT = ORDEN_TIPOS.map((t) => ({ valor: t, etiqueta: ETIQUETA_TIPO[t] }));
 const NIVELES_SELECT = NIVELES_PROGRAMA;
 
+/** Atajos para los ítems de checklist más comunes, en el formulario de
+ *  programa (ver ModalPrograma) -- un clic los agrega tal cual, pero el
+ *  checklist es una lista libre: el campo de texto de al lado admite
+ *  cualquier otro ítem, no se limita a estos tres. */
+const SUGERENCIAS_CHECKLIST = ['Sin porcentaje de guías', 'Sin Actividades Colaborativas', '1 Actividad por Sección'];
+
 function ModalPrograma({
   abierto, programa, onCerrar, onGuardado,
 }: {
@@ -430,12 +435,11 @@ function ModalPrograma({
     fechaAperturaAnio: '', fechaAperturaSemestre: '' as '' | '1' | '2',
     platformOwner: '',
     registroCalificado: '',
-    sinPorcentajeGuias: false,
-    sinActividadesColaborativas: false,
-    unaActividadPorSeccion: false,
+    checklist: [] as string[],
   };
 
   const [form, setForm] = useState(FORM_VACIO);
+  const [itemChecklist, setItemChecklist] = useState('');
   const [error, setError] = useState('');
   const [enviando, setEnviando] = useState(false);
   // Primer clic en "Guardar" arma la confirmación; el segundo (sobre "Sí,
@@ -456,20 +460,27 @@ function ModalPrograma({
       fechaAperturaSemestre: (semestre === '1' || semestre === '2') ? semestre : '',
       platformOwner: programa.platform_owner ?? '',
       registroCalificado: programa.registro_calificado ?? '',
-      sinPorcentajeGuias: programa.sin_porcentaje_guias,
-      sinActividadesColaborativas: programa.sin_actividades_colaborativas,
-      unaActividadPorSeccion: programa.una_actividad_por_seccion,
+      checklist: programa.checklist,
     });
+    setItemChecklist('');
   }
   if (abierto && !programa && idCargado !== null) {
     setIdCargado(null);
     setForm(FORM_VACIO);
+    setItemChecklist('');
   }
   if (!abierto && confirmando) setConfirmando(false);
 
   function set<K extends keyof typeof form>(campo: K, valor: (typeof form)[K]) {
     setForm({ ...form, [campo]: valor });
     setConfirmando(false);
+  }
+
+  function agregarItemChecklist(item: string) {
+    const limpio = item.trim();
+    if (!limpio || form.checklist.includes(limpio)) return;
+    set('checklist', [...form.checklist, limpio]);
+    setItemChecklist('');
   }
 
   function enviar(e: React.FormEvent) {
@@ -550,25 +561,66 @@ function ModalPrograma({
 
         <div className="border-t border-slate-200 dark:border-slate-700 pt-5">
           <p className="text-[11px] font-medium uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-3">
-            Particularidades del programa (opcional)
+            Checklist de particularidades (opcional)
           </p>
-          <div className="space-y-2.5">
-            <Casilla
-              etiqueta="Sin porcentaje de guías"
-              checked={form.sinPorcentajeGuias}
-              onChange={(e) => set('sinPorcentajeGuias', e.target.checked)}
+
+          {form.checklist.length > 0 && (
+            <ul className="space-y-1.5 mb-2.5">
+              {form.checklist.map((item) => (
+                <li
+                  key={item}
+                  className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 dark:bg-slate-800/60 px-3 py-1.5"
+                >
+                  <span className="text-sm text-slate-700 dark:text-slate-300">{item}</span>
+                  <button
+                    type="button"
+                    onClick={() => set('checklist', form.checklist.filter((i) => i !== item))}
+                    title="Quitar"
+                    className="shrink-0 text-slate-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                  >
+                    ✕
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="Ej. Sin porcentaje de guías"
+              value={itemChecklist}
+              onChange={(e) => setItemChecklist(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter') return;
+                e.preventDefault();
+                agregarItemChecklist(itemChecklist);
+              }}
+              className="flex-1 h-10 px-3 rounded-lg border border-stone-300 bg-white dark:bg-slate-900 dark:border-slate-700
+                         text-slate-900 dark:text-slate-100 text-sm outline-none transition-colors
+                         placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-stone-400"
             />
-            <Casilla
-              etiqueta="Sin Actividades Colaborativas"
-              checked={form.sinActividadesColaborativas}
-              onChange={(e) => set('sinActividadesColaborativas', e.target.checked)}
-            />
-            <Casilla
-              etiqueta="1 Actividad por Sección"
-              checked={form.unaActividadPorSeccion}
-              onChange={(e) => set('unaActividadPorSeccion', e.target.checked)}
-            />
+            <Boton type="button" onClick={() => agregarItemChecklist(itemChecklist)}>
+              + Agregar
+            </Boton>
           </div>
+
+          {SUGERENCIAS_CHECKLIST.filter((s) => !form.checklist.includes(s)).length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-2.5">
+              {SUGERENCIAS_CHECKLIST.filter((s) => !form.checklist.includes(s)).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => agregarItemChecklist(s)}
+                  className="text-[11px] px-2 py-1 rounded-full border border-dashed border-slate-300 dark:border-slate-700
+                             text-slate-500 dark:text-slate-400 hover:border-slate-400 dark:hover:border-slate-500
+                             hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+                >
+                  + {s}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="border-t border-slate-200 dark:border-slate-700 pt-5">

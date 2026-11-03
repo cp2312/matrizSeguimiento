@@ -18,6 +18,18 @@ function validarFechaApertura(valor: unknown): string | null | undefined {
   return valor;
 }
 
+/** Limpia el checklist que llega del body: recorta espacios, descarta vacíos
+ *  y duplicados (conserva el orden en que se agregaron). `undefined` cuando
+ *  no vino un arreglo en el body -- no tocar lo que ya había. */
+function sanitizarChecklist(valor: unknown): string[] | undefined {
+  if (!Array.isArray(valor)) return undefined;
+  const limpio = valor
+    .filter((v): v is string => typeof v === 'string')
+    .map((v) => v.trim())
+    .filter((v) => v.length > 0);
+  return Array.from(new Set(limpio));
+}
+
 // Listar programas
 programsRouter.get('/', async (req, res) => {
   const incluirArchivados = req.query.archivados === 'true';
@@ -42,8 +54,7 @@ programsRouter.get('/:id', async (req, res) => {
 // Crear
 programsRouter.post('/', async (req, res) => {
   const {
-    name, notes, type, academicLevel, fechaApertura, platformOwner, registroCalificado,
-    sinPorcentajeGuias, sinActividadesColaborativas, unaActividadPorSeccion,
+    name, notes, type, academicLevel, fechaApertura, platformOwner, registroCalificado, checklist,
   } = req.body;
 
   if (!name?.trim()) {
@@ -77,14 +88,12 @@ programsRouter.post('/', async (req, res) => {
 
   const programa = await queryOne<Program>(
     `INSERT INTO programs (
-       name, notes, type, academic_level, fecha_apertura, platform_owner, registro_calificado,
-       sin_porcentaje_guias, sin_actividades_colaborativas, una_actividad_por_seccion
+       name, notes, type, academic_level, fecha_apertura, platform_owner, registro_calificado, checklist
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
     [
       name.trim(), notes ?? null, tipo, nivel, fecha ?? null, platformOwner?.trim() || null,
-      registroCalificado?.trim() || null,
-      Boolean(sinPorcentajeGuias), Boolean(sinActividadesColaborativas), Boolean(unaActividadPorSeccion),
+      registroCalificado?.trim() || null, sanitizarChecklist(checklist) ?? [],
     ]
   );
 
@@ -97,8 +106,7 @@ programsRouter.patch('/:id', async (req, res) => {
   if (!existente) return res.status(404).json({ error: 'Programa no encontrado' });
 
   const {
-    name, notes, type, archived, academicLevel, fechaApertura, platformOwner, registroCalificado,
-    sinPorcentajeGuias, sinActividadesColaborativas, unaActividadPorSeccion,
+    name, notes, type, archived, academicLevel, fechaApertura, platformOwner, registroCalificado, checklist,
   } = req.body;
 
   if (type !== undefined && !TIPOS_VALIDOS.includes(type)) {
@@ -129,9 +137,8 @@ programsRouter.patch('/:id', async (req, res) => {
   const programa = await queryOne<Program>(
     `UPDATE programs SET
        name = $1, notes = $2, type = $3, archived = $4, academic_level = $5, fecha_apertura = $6,
-       platform_owner = $7, registro_calificado = $8,
-       sin_porcentaje_guias = $9, sin_actividades_colaborativas = $10, una_actividad_por_seccion = $11
-     WHERE id = $12 RETURNING *`,
+       platform_owner = $7, registro_calificado = $8, checklist = $9
+     WHERE id = $10 RETURNING *`,
     [
       name?.trim() ?? existente.name,
       notes !== undefined ? notes : existente.notes,
@@ -141,9 +148,7 @@ programsRouter.patch('/:id', async (req, res) => {
       fecha !== undefined ? fecha : existente.fecha_apertura,
       platformOwner !== undefined ? (platformOwner?.trim() || null) : existente.platform_owner,
       registroCalificado !== undefined ? (registroCalificado?.trim() || null) : existente.registro_calificado,
-      sinPorcentajeGuias !== undefined ? Boolean(sinPorcentajeGuias) : existente.sin_porcentaje_guias,
-      sinActividadesColaborativas !== undefined ? Boolean(sinActividadesColaborativas) : existente.sin_actividades_colaborativas,
-      unaActividadPorSeccion !== undefined ? Boolean(unaActividadPorSeccion) : existente.una_actividad_por_seccion,
+      sanitizarChecklist(checklist) ?? existente.checklist,
       req.params.id,
     ]
   );

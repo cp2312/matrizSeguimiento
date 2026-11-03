@@ -168,9 +168,7 @@ export default function Programa() {
       {programa && (
         programa.platform_owner
         || programa.registro_calificado
-        || programa.sin_porcentaje_guias
-        || programa.sin_actividades_colaborativas
-        || programa.una_actividad_por_seccion
+        || programa.checklist.length > 0
       ) && (
         <div className="flex flex-wrap items-center gap-2 mb-4 -mt-2">
           {programa.platform_owner && (
@@ -183,21 +181,14 @@ export default function Programa() {
               Registro calificado: {programa.registro_calificado}
             </span>
           )}
-          {programa.sin_porcentaje_guias && (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2.5 py-1 text-[12px] font-medium">
-              Sin porcentaje de guías
+          {programa.checklist.map((item) => (
+            <span
+              key={item}
+              className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2.5 py-1 text-[12px] font-medium"
+            >
+              {item}
             </span>
-          )}
-          {programa.sin_actividades_colaborativas && (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2.5 py-1 text-[12px] font-medium">
-              Sin Actividades Colaborativas
-            </span>
-          )}
-          {programa.una_actividad_por_seccion && (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2.5 py-1 text-[12px] font-medium">
-              1 Actividad por Sección
-            </span>
-          )}
+          ))}
         </div>
       )}
 

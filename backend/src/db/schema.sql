@@ -160,13 +160,14 @@ CREATE TABLE programs (
   -- Número/estado del registro calificado del programa, si ya lo tiene --
   -- texto libre, opcional (no todos los programas lo tienen todavía).
   registro_calificado TEXT,
-  -- Casillero de particularidades del programa frente al proceso estándar --
-  -- cada una independiente de las demás. Antes vivían como texto suelto
-  -- dentro de "notes"; pasan a columnas propias para poder mostrarlas como
-  -- insignia en vez de tener que leer la nota completa.
-  sin_porcentaje_guias BOOLEAN NOT NULL DEFAULT FALSE,
-  sin_actividades_colaborativas BOOLEAN NOT NULL DEFAULT FALSE,
-  una_actividad_por_seccion BOOLEAN NOT NULL DEFAULT FALSE,
+  -- Checklist de particularidades del programa frente al proceso estándar --
+  -- lista libre de texto, no un set fijo de casillas: cada programa puede
+  -- tener sus propios ítems (p. ej. "Sin porcentaje de guías"), agregados a
+  -- mano al crear/editar el programa (ver ListadoProgramas.tsx). Reemplaza
+  -- a las tres columnas booleanas fijas que tenía antes (sin_porcentaje_guias
+  -- / sin_actividades_colaborativas / una_actividad_por_seccion) -- ver
+  -- migración 2026-11-03-programa-checklist-libre.sql para el porqué.
+  checklist  TEXT[]      NOT NULL DEFAULT '{}',
   archived   BOOLEAN     NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),

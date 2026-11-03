@@ -164,11 +164,10 @@ export interface Program {
   platform_owner: string | null;
   /** número/estado del registro calificado del programa, si ya lo tiene -- texto libre */
   registro_calificado: string | null;
-  /** checklist de particularidades del programa frente al proceso estándar
-   *  -- cada una independiente de las demás (ver ListadoProgramas.tsx) */
-  sin_porcentaje_guias: boolean;
-  sin_actividades_colaborativas: boolean;
-  una_actividad_por_seccion: boolean;
+  /** checklist de particularidades del programa frente al proceso estándar --
+   *  lista libre de texto (no un set fijo de ítems): cada programa agrega los
+   *  suyos al crear/editar (ver ListadoProgramas.tsx) */
+  checklist: string[];
   archived: boolean;
   created_at: string;
   updated_at: string;
